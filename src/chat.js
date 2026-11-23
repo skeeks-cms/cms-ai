@@ -145,22 +145,102 @@ function appendLinks(target,value){
   }
   target.append(document.createTextNode(value.slice(cursor)));
 }
+// Steps of the active run inside the conversation, like a desktop agent: the current
+// step spins, finished steps get a check mark. Finished runs keep a collapsed list.
+const stepTypes=new Set(["queued","started","thinking","tool","step","cancel"]);
+const stepText={queued:"В очереди",started:"Начинаю работу"};
+let live=null;
+function liveList(){
+ if(live && live.isConnected)return live;
+ live=document.createElement("ol");live.className="sx-ai-steps sx-ai-steps--live";live.setAttribute("aria-label","Ход работы");
+ el("messages").append(live);
+ return live;
+}
 function renderActivity(events,reset){
- const box=el("activity"),list=box.querySelector("ol");
- if(reset)list.replaceChildren();
+ if(reset){live?.remove();live=null;}
+ if(!active(run))return;
+ const list=liveList();
  for(const e of events){
-  if(!e.text)continue;
-  const li=document.createElement("li");li.textContent=e.text;li.dataset.type=e.type;list.append(li);
+  if(!stepTypes.has(e.type))continue;
+  const text=stepText[e.type]||e.text;
+  const last=list.lastElementChild;
+  if(last && last.textContent===text)continue;
+  last?.classList.replace("is-running","is-done");
+  const li=document.createElement("li");li.className="is-running";li.textContent=text;list.append(li);
  }
- box.hidden=!list.childElementCount;
+ if(!list.childElementCount){const li=document.createElement("li");li.className="is-running";li.textContent="В очереди";list.append(li);}
+ const scroll=el("scroll");
+ if(scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<120)scroll.scrollTop=scroll.scrollHeight;
+}
+function doneSteps(texts){
+ const box=document.createElement("details");box.className="sx-ai-steps-done";
+ const summary=document.createElement("summary");summary.textContent="Ход работы · шагов: "+texts.length;
+ const list=document.createElement("ol");list.className="sx-ai-steps";
+ for(const t of texts){const li=document.createElement("li");li.className="is-done";li.textContent=t;list.append(li);}
+ box.append(summary,list);
+ return box;
+}
+// The pending action in plain words; technical arguments stay under a toggle.
+const actionVerbs=[[/_create$/,"Создать"],[/_update$/,"Изменить"],[/_send$/,"Отправить"],[/_transfer$/,"Передать"],[/_add$/,"Добавить"],[/_remove$/,"Убрать"],[/_action$/,"Выполнить действие"]];
+const actionNouns=[["cms_ai_site_drafts","черновики страниц сайта"],["cms_ai_task","задачу"],["cms_ai_project_files","файлы проекта"],["page_css","оформление страницы"],
+ ["cms_comm_chat_reply","ответ в чат"],["cms_comm_draft","черновик письма"],["cms_comm_campaign","рассылку"],["cms_content_element","публикацию"],
+ ["cms_tree","раздел сайта"],["cms_task","задачу"],["cms_company","компанию"],["cms_lead","сделку"],["cms_deal","услугу"],["cms_project","проект"],["cms_proposal","предложение"]];
+const argLabels={name:"Название",title:"Название",description:"Описание",cms_company_id:"Компания №",company_id:"Компания №",executor_id:"Исполнитель №",
+ cms_project_id:"Проект №",cms_deal_id:"Услуга №",service_id:"Услуга №",cms_lead_id:"Сделка №",plan_start_at:"Начало",plan_end_at:"Срок",status:"Статус",
+ text:"Текст",subject:"Тема",id:"Запись №",pid:"Родительский раздел №",parent_id:"Родительский раздел №",code:"Адрес",css:"CSS",
+ description_short:"Краткое описание",description_full:"Полное описание",price:"Цена",active:"Активна"};
+function describePending(p){
+ const verb=actionVerbs.find(([re])=>re.test(p.tool))?.[1]||"Выполнить";
+ const noun=actionNouns.find(([prefix])=>p.tool.startsWith(prefix))?.[1]||"действие в CRM";
+ const rows=[];
+ const add=(key,value)=>{
+  if(key==="request_key" || value===null || value===undefined || value==="")return;
+  if(typeof value==="object" && !Array.isArray(value)){for(const [k,v] of Object.entries(value))add(k,v);return;}
+  const shown=Array.isArray(value)?value.map(v=>typeof v==="object"?JSON.stringify(v):String(v)).join(", "):String(value);
+  rows.push([argLabels[key]||key,shown.length>300?shown.slice(0,300)+"…":shown]);
+ };
+ for(const [k,v] of Object.entries(p.args||{}))add(k,v);
+ return {title:verb+" "+noun,rows};
+}
+const previewBox=document.getElementById("sx-ai-preview");
+function renderPending(){
+ const box=previewBox;box.hidden=!pending;
+ if(!pending)return;
+ const {title,rows}=describePending(pending);
+ box.querySelector("strong").textContent=title;
+ const list=document.createElement("dl");list.className="sx-ai-pending-fields";
+ for(const [k,v] of rows){const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=k;dd.textContent=v;list.append(dt,dd);}
+ const tech=document.createElement("details"),summary=document.createElement("summary"),pre=document.createElement("pre");
+ summary.textContent="Технические подробности";pre.textContent=pending.tool+"\n"+JSON.stringify(pending.args,null,2);tech.append(summary,pre);
+ box.querySelector(".sx-ai-pending-body").replaceChildren(list,tech);
+ el("messages").append(box);
 }
 function renderRun(){
  const working=active(run);
- el("job").textContent=pending?"Требуется ваше подтверждение":working?(run.cancelRequested?"Останавливаю…":(el("activity").querySelector("li:last-child")?.textContent||"В очереди")):"";
+ el("job").textContent=pending?"Требуется ваше подтверждение":working&&run.cancelRequested?"Останавливаю…":"";
  el("job").classList.toggle("sx-ai-working",working);
  el("stop").hidden=!working || run.cancelRequested;
  panel.querySelector(".sx-ai-composer form button[type=submit]").disabled=working;
 }
+// The answer appears progressively, keeping links and formatting.
+function typeIn(node){
+ if(document.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+ const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT),parts=[];
+ while(walker.nextNode())parts.push([walker.currentNode,walker.currentNode.textContent]);
+ const total=parts.reduce((n,[,t])=>n+t.length,0);
+ if(!total)return;
+ for(const [n] of parts)n.textContent="";
+ node.classList.add("is-typing");
+ const step=Math.max(2,Math.ceil(total/90));let shown=0;
+ const tick=()=>{
+  shown=Math.min(total,shown+step);let left=shown;
+  for(const [n,t] of parts){const k=Math.min(t.length,Math.max(0,left));n.textContent=t.slice(0,k);left-=t.length;}
+  if(shown<total && !document.hidden)setTimeout(tick,16);
+  else{for(const [n,t] of parts)n.textContent=t;node.classList.remove("is-typing");}
+ };
+ setTimeout(tick,16);
+}
+let seenAnswer=0;
 function render(data){
  current=data;
  const picker=el("engine");
@@ -171,6 +251,8 @@ function render(data){
  el("engineLabel").hidden=engines.length<2 || !!data.chatId;
  const scroll=el("scroll");
  const follow=chatId!==data.chatId || scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80;
+ if(chatId!==data.chatId)seenAnswer=0;
+ const newAnswer=chatId===data.chatId && seenAnswer>0;
  chatId=data.chatId;
  el("title").textContent=data.chatId?data.title:"Новый чат";
  refreshSidebar();
@@ -207,10 +289,15 @@ function render(data){
     }
   }
   el("messages").append(item);
+  const steps=entry.role==="user" && data.steps?.[entry.id];
+  if(steps && steps.length)el("messages").append(doneSteps(steps));
+  if(entry.role==="assistant" && newAnswer && Number(entry.id)>seenAnswer)typeIn(item);
  }
- pending=data.pending;el("preview").hidden=!pending;
- if(pending)el("preview").querySelector("pre").textContent=pending.tool+"\n"+JSON.stringify(pending.args,null,2);
+ const answers=data.history.filter(e=>e.role==="assistant");
+ seenAnswer=answers.length?Number(answers.at(-1).id):0;
+ pending=data.pending;
  run=data.run;lastEventId=data.lastEventId||0;
+ renderPending();
  renderActivity(data.events||[],true);
  renderRun();
  if(follow)scroll.scrollTop=scroll.scrollHeight;
@@ -237,9 +324,10 @@ function poll(){
    if(!r.ok)throw Error();
    const data=await r.json();
    if(chatId!==expected)return;
-   if(data.events.length){lastEventId=data.events.at(-1).id;renderActivity(data.events.filter(e=>!run || e.run===data.run?.id),false);}
    const finished=active(run) && !active(data.run);
-   run=data.run;renderRun();
+   run=data.run;
+   if(data.events.length){lastEventId=data.events.at(-1).id;renderActivity(data.events.filter(e=>e.run===run?.id),false);}
+   renderRun();
    if(finished){await open({chat:expected});return;}
    if(active(run))poll();
   }catch{el("job").textContent="Не удалось обновить ход работы. Повторяю…";pollTimer=setTimeout(poll,3000);}
