@@ -2,30 +2,23 @@
 const panel=document.querySelector(".sx-ai-panel");
 if(!panel || panel.dataset.ready)return;
 panel.dataset.ready="1";
-let tab,auth,context;
 
 const el=id=>document.getElementById("sx-ai-"+id);
-let pending,chatId,sending=false;
-const endpoint = path => {
- const target = new URL(path.replace(/^\//,""),location.origin);
- const url = new URL("/ai-panel/api",location.origin);
- url.search = target.search;
- url.searchParams.set("op",target.pathname.slice(1));
- url.searchParams.set("tab",tab);
+// API v1 of SkeekS AI through the panel endpoint of this site.
+const endpoint=(op,params={})=>{
+ const url=new URL("/ai-panel/api",location.origin);
+ url.searchParams.set("op",op);
+ for(const [k,v] of Object.entries(params))if(v!==null && v!==undefined && v!=="")url.searchParams.set(k,v);
  return url;
 };
-async function progress(){
- const r=await fetch(endpoint("progress"));
- if(!r.ok)return;
- const {events}=await r.json();
- if(!events.length)return;
- if(sending)el("status").textContent=events.at(-1);
- const list=el("activity").querySelector("ol");
- if(list.childElementCount===events.length)return;
- list.replaceChildren(...events.map(text=>{const li=document.createElement("li");li.textContent=text;return li;}));
- el("activity").hidden=false;
+async function call(op,body){
+ const r=await fetch(endpoint(op),{method:"POST",headers:{"content-type":"application/json","X-CSRF-Token":yii.getCsrfToken()},body:JSON.stringify(body)});
+ const data=await r.json().catch(()=>({}));
+ if(!r.ok)throw Error(data.error||data.message||"Запрос не выполнен.");
+ return data;
 }
-
+let chatId=null,context="",pending=null,run=null,lastEventId=0,pollTimer=null,busy=false,current=null;
+const active=r=>r && ["queued","running"].includes(r.status);
 const folder=el("folder");
 async function saveProjectFile(file, ownerChat){
  const response=await fetch("/ai-panel/project-save",{method:"POST",
@@ -138,7 +131,6 @@ el("search").oninput=()=>{
  ++sidebarVersion;clearTimeout(searchTimer);searchTimer=setTimeout(()=>refreshSidebar(),170);
 };
 el("group").onchange=()=>changeSidebar({id:chatId,project:Number(el("group").value)||null});
-let jobTimer;
 function appendLinks(target,value){
   let cursor=0;
   for(const match of value.matchAll(/\[([^\]\n]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s"<>)]*)\)|(?<![\w/:])(?:\*\*)?((?:https?:\/\/|\/(?!\/))[\w%~?&=#./-]+)(?:\*\*)?/g)){
@@ -153,32 +145,34 @@ function appendLinks(target,value){
   }
   target.append(document.createTextNode(value.slice(cursor)));
 }
+function renderActivity(events,reset){
+ const box=el("activity"),list=box.querySelector("ol");
+ if(reset)list.replaceChildren();
+ for(const e of events){
+  if(!e.text)continue;
+  const li=document.createElement("li");li.textContent=e.text;li.dataset.type=e.type;list.append(li);
+ }
+ box.hidden=!list.childElementCount;
+}
+function renderRun(){
+ const working=active(run);
+ el("job").textContent=pending?"Требуется ваше подтверждение":working?(run.cancelRequested?"Останавливаю…":(el("activity").querySelector("li:last-child")?.textContent||"В очереди")):"";
+ el("job").classList.toggle("sx-ai-working",working);
+ el("stop").hidden=!working || run.cancelRequested;
+ panel.querySelector(".sx-ai-composer form button[type=submit]").disabled=working;
+}
 function render(data){
+ current=data;
  const picker=el("engine");
  const engines=data.engines || ["codex"];
  const previous=picker.value;
  picker.replaceChildren(...engines.map(id=>new Option(id==="codex"?"Codex":"Claude",id)));
- if(engines.includes(previous))picker.value=previous;
- el("engineLabel").hidden=engines.length<2;
- clearTimeout(jobTimer);
- const job=data.draftJob;
- const running=job && !Number(job.done) && ["running","queued","retry_wait"].includes(job.status);
- const stages={running:data.stage || "Воркер выполняет поручение",queued:"В очереди",retry_wait:"Ожидается повторная попытка"};
- el("job").textContent=data.pending?"Требуется ваше подтверждение":running?stages[job.status]+" · №"+job.id:
-   job && !Number(job.done)?"Задание №"+job.id+" остановлено ("+job.status+").":"";
- el("job").classList.toggle("sx-ai-working",!!running && !data.pending);
- if(running && panel.open){
-  const expected=data.chatId;
-  jobTimer=setTimeout(async()=>{
-   if(!panel.open || chatId!==expected)return;
-   try{const r=await fetch(endpoint("history"));if(r.ok){const updated=await r.json();if(chatId===expected && updated.chatId===expected)render(updated);}}
-   catch{el("job").textContent="Не удалось обновить состояние задания.";}
-  },2000);
- }
+ picker.value=engines.includes(previous)?previous:(data.engine||engines[0]||"");
+ el("engineLabel").hidden=engines.length<2 || !!data.chatId;
  const scroll=el("scroll");
  const follow=chatId!==data.chatId || scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80;
  chatId=data.chatId;
- el("title").textContent=data.chats.find(c=>Number(c.id)===chatId)?.title || "Новый чат";
+ el("title").textContent=data.chatId?data.title:"Новый чат";
  refreshSidebar();
  el("messages").replaceChildren();
  for(const entry of data.history){
@@ -195,10 +189,10 @@ function render(data){
   }else appendLinks(item,entry.text);
   for(const f of (data.files||[]).filter(f=>String(f.message_id)===String(entry.id))){
     const link=document.createElement("a");
-    link.href=endpoint("file?chat="+encodeURIComponent(chatId)+"&id="+encodeURIComponent(f.id));link.textContent=f.name;link.download=f.name;
+    link.href=endpoint("file",{chat:chatId,id:f.id});link.textContent=f.name;link.download=f.name;
     if(entry.role==="assistant" && /^preview-\d+-(phone|desktop)\.jpg$/.test(f.name)){
      const image=document.createElement("img");
-     image.className="sx-ai-screenshot";image.src=link.href;
+     image.className="sx-ai-screenshot";image.src=link.href;image.loading="lazy";
      image.alt=f.name.endsWith("-phone.jpg")?"Предпросмотр на телефоне":"Предпросмотр на компьютере";
      link.replaceChildren(image,document.createTextNode(image.alt));
     }
@@ -216,51 +210,62 @@ function render(data){
  }
  pending=data.pending;el("preview").hidden=!pending;
  if(pending)el("preview").querySelector("pre").textContent=pending.tool+"\n"+JSON.stringify(pending.args,null,2);
+ run=data.run;lastEventId=data.lastEventId||0;
+ renderActivity(data.events||[],true);
+ renderRun();
  if(follow)scroll.scrollTop=scroll.scrollHeight;
- const profile=data.engine==="claude-vclaude"?"Claude через VClaude · результаты REST передаются провайдеру":data.engine==="claude-personal"?"Claude · личное подключение":data.chatId?"Codex":"";
+ const engine=data.engine;
+ const profile=!data.chatId?"":engine==="claude-vclaude"?"Claude через VClaude · результаты REST передаются провайдеру":engine==="claude-personal"?"Claude · личное подключение":"Codex";
  el("context").textContent=[data.company?"Компания №"+data.company:"",profile].filter(Boolean).join(" · ");
+ if(active(run))poll();
 }
-async function send(path,body){
- if(sending)return;
- sending=true;
- const editor=panel.querySelector("[data-sx-rte-editor]");
- const isMessage=path==="/message";
- let bubble;
- if(isMessage){
-   bubble=document.createElement("article");bubble.className="user";
-   bubble.textContent=body.message || "Прикреплённые файлы: "+body.uploads.length;
-   el("messages").append(bubble);
-   el("scroll").scrollTop=el("scroll").scrollHeight;
-   editor.replaceChildren();editor.setAttribute("contenteditable","false");
- }
+async function open(params){
+ stopPolling();
+ const r=await fetch(endpoint("history",params));
+ const data=await r.json().catch(()=>({}));
+ if(!r.ok)throw Error(data.error||"Не удалось открыть переписку.");
+ render(data);
+}
+function stopPolling(){clearTimeout(pollTimer);pollTimer=null;}
+function poll(){
+ stopPolling();
+ const expected=chatId;
+ pollTimer=setTimeout(async()=>{
+  if(!panel.open || chatId!==expected)return;
+  try{
+   const r=await fetch(endpoint("events",{chat:expected,after:lastEventId}));
+   if(!r.ok)throw Error();
+   const data=await r.json();
+   if(chatId!==expected)return;
+   if(data.events.length){lastEventId=data.events.at(-1).id;renderActivity(data.events.filter(e=>!run || e.run===data.run?.id),false);}
+   const finished=active(run) && !active(data.run);
+   run=data.run;renderRun();
+   if(finished){await open({chat:expected});return;}
+   if(active(run))poll();
+  }catch{el("job").textContent="Не удалось обновить ход работы. Повторяю…";pollTimer=setTimeout(poll,3000);}
+ },1000);
+}
+async function action(fn){
+ if(busy)return;
+ busy=true;
  for(const b of panel.querySelectorAll("button,select"))b.disabled=true;
- el("status").classList.add("sx-ai-working");
- el("status").textContent=isMessage?"Отправляю сообщение…":path==="/confirm"?"Передаю подтверждение…":"Открываю чат…";
- el("activity").hidden=true;el("activity").open=true;el("activity").querySelector("ol").replaceChildren();
- const timer=setInterval(()=>progress().catch(()=>{}),750);
- try{
-  const response=await fetch(endpoint(path),{method:"POST",headers:{"content-type":"application/json","X-CSRF-Token":yii.getCsrfToken()},body:JSON.stringify({...body,chatId})});
-  if(response.status===401)context=undefined;
-  if(!response.ok){const error=await response.json().catch(()=>({}));throw Error(error.error||error.message||"Запрос не выполнен.");}
-  const data=await response.json();
-  if(path==="/new" || path==="/select"){showChats(false);toggle.focus();}
-  render(data);if(folder.open)refreshFolder();panel.querySelector("[data-sx-rte-editor]").replaceChildren();el("message").value="";panel.querySelector("[data-sx-attach-list]").replaceChildren();el("status").textContent="";
- }catch(e){
-   clearInterval(timer);
-   if(isMessage){
-     // The service may already have persisted the user message before a provider error.
-     bubble.remove();
-     try{const r=await fetch(endpoint("history"));if(r.ok)render(await r.json());}catch{}
-     editor.textContent=body.message;
-   }
-   el("status").textContent=e.message;
- }finally{
-   clearInterval(timer);sending=false;
-   el("status").classList.remove("sx-ai-working");
-   if(isMessage)editor.setAttribute("contenteditable","true");
-   el("activity").open=false;
-   for(const b of panel.querySelectorAll("button,select"))b.disabled=false;
- }
+ try{await fn();el("status").textContent="";}
+ catch(e){el("status").textContent=e.message;}
+ finally{busy=false;for(const b of panel.querySelectorAll("button,select"))b.disabled=false;renderRun();}
+}
+async function sendMessage(message,uploads){
+ const editor=panel.querySelector("[data-sx-rte-editor]");
+ const bubble=document.createElement("article");bubble.className="user";
+ bubble.textContent=message || "Прикреплённые файлы: "+uploads.length;
+ el("messages").append(bubble);el("scroll").scrollTop=el("scroll").scrollHeight;
+ const clientKey=crypto.randomUUID().replaceAll("-","");
+ await action(async()=>{
+  try{
+   const result=await call("message",{chatId,engine:el("engine").value,company:context||null,clientKey,message,uploads});
+   editor.replaceChildren();el("message").value="";panel.querySelector("[data-sx-attach-list]").replaceChildren();
+   await open({chat:result.chatId});
+  }catch(e){bubble.remove();throw e;}
+ });
 }
 const toggle=el("toggleChats");
 function showChats(open){
@@ -268,14 +273,18 @@ function showChats(open){
  toggle.setAttribute("aria-expanded",String(open));
 }
 toggle.onclick=()=>showChats(!panel.classList.contains("sx-ai-show-chats"));
-el("newChat").onclick=()=>send("/new",{engine:el("engine").value || "codex"});
+el("newChat").onclick=()=>{
+ stopPolling();showChats(false);
+ render({...current,chatId:null,title:"Новый чат",engine:el("engine").value,history:[],files:[],pending:null,run:null,events:[],lastEventId:0,company:context?Number(context):null});
+ panel.querySelector("[data-sx-rte-editor]")?.focus();
+};
 el("chats").onclick=e=>{
  const pin=e.target.closest("button[data-pin]");
  if(pin){changeSidebar({id:Number(pin.dataset.pin),pin:pin.getAttribute("aria-pressed")!=="true"});return;}
  const button=e.target.closest("button[data-chat]");
  if(!button)return;
  if(Number(button.dataset.chat)===chatId)showChats(false);
- else send("/select",{id:Number(button.dataset.chat)});
+ else action(async()=>{await open({chat:Number(button.dataset.chat)});showChats(false);});
 };
 panel.addEventListener("close",()=>showChats(false));
 let revision;
@@ -303,32 +312,27 @@ panel.querySelector("form").onsubmit=async e=>{
  if (uploads.length>4) {el("status").textContent="Можно приложить до четырёх файлов.";return;}
  const message=panel.querySelector("[data-sx-rte-editor]").innerText.trim();
  if (message.length>1800){el("status").textContent="Максимальная длина сообщения — 1800 символов.";return;}
- if (uploads.length || message) await send("/message",{message,uploads});
+ if (uploads.length || message) await sendMessage(message,uploads);
 };
-el("confirm").onclick=()=>send("/confirm",{id:pending.id});
-window.addEventListener("message",async event=>{
- if(event.origin!==location.origin || event.source!==auth?.contentWindow || event.data?.tab!==tab)return;
- auth.remove(); auth=null;
- try {
-  const response=await fetch(endpoint("history"));
-  if(!response.ok)throw Error();
-  render(await response.json());el("status").textContent="";
-  panel.querySelector("main").inert=false;
- }catch{el("status").textContent="Не удалось открыть переписку.";}
+el("confirm").onclick=()=>action(async()=>{run=await call("confirm",{chatId,id:pending.id});await open({chat:chatId});});
+el("reject").onclick=()=>action(async()=>{await call("reject",{chatId,id:pending.id});await open({chat:chatId});});
+el("stop").onclick=()=>action(async()=>{
+ run=await call("cancel",{chatId,runId:run.id});
+ if(active(run)){renderRun();poll();}else await open({chat:chatId});
 });
 document.addEventListener("click",event=>{
  const trigger=event.target.closest("[data-sx-ai-open]");
  if(!trigger)return;
  const company=trigger.dataset.sxAiCompany || document.querySelector("[data-sx-ai-company]")?.dataset.sxAiCompany || "";
  if(!panel.open)panel.showModal();
- if(company===context && !panel.querySelector("main").inert){
-   fetch(endpoint("history")).then(r=>r.ok?r.json():null).then(data=>{if(data && data.chatId===chatId)render(data);}).catch(()=>{});
+ if(company===context && current){
+   if(chatId)open({chat:chatId}).catch(e=>el("status").textContent=e.message);
    return;
  }
- context=company;tab=crypto.randomUUID().replaceAll("-","");
- auth?.remove();auth=document.createElement("iframe");auth.title="Авторизация SkeekS AI";
- auth.src="/ai-panel/start?tab="+tab+"&company="+encodeURIComponent(company);
- panel.prepend(auth);panel.querySelector("main").inert=true;el("status").textContent="Подключение…";
+ context=company;
+ el("status").textContent="Открываю переписку…";
+ open({company}).then(()=>el("status").textContent="").catch(e=>el("status").textContent=e.message);
 });
+panel.addEventListener("close",stopPolling);
 panel.querySelector("[data-sx-ai-close]").onclick=()=>panel.close();
 })();

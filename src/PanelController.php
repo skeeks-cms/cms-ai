@@ -2,6 +2,7 @@
 
 namespace skeeks\cms\ai;
 
+use skeeks\cms\ai\service\ChatApi;
 use skeeks\cms\services\TemporaryUploads;
 use Yii;
 use yii\web\BadRequestHttpException;
@@ -10,89 +11,24 @@ use yii\web\ForbiddenHttpException;
 use yii\web\HttpException;
 use yii\web\Response;
 
+/**
+ * Panel endpoints of the employee's browser session. Chats, runs and events are
+ * operations of SkeekS AI API v1 (ChatApi); the panel never waits for the engine.
+ */
 final class PanelController extends Controller
 {
-    public $serviceUrl;
-
     public function beforeAction($action)
     {
         Yii::$app->response->headers->set('Cache-Control', 'no-store');
         if (Yii::$app->user->isGuest) {
             throw new ForbiddenHttpException();
         }
-        return parent::beforeAction($action);
-    }
-
-    private function sessionKey(string $tab): string
-    {
-        if (!preg_match('/^[a-f0-9]{32}$/D', $tab)) {
-            throw new BadRequestHttpException();
+        if (!parent::beforeAction($action)) {
+            return false;
         }
-        return 'skeeks-ai/' . hash('sha256', Yii::$app->session->id) . '/' . Yii::$app->user->id . '/' . Yii::$app->skeeks->site->id . '/' . $tab;
-    }
-
-    private function requestService(string $path, string $tab, ?array $data = null): array
-    {
-        $session = Yii::$app->session;
-        $sid = Yii::$app->cache->get($this->sessionKey($tab));
-        $session->close();
-        $key = trim((string)@file_get_contents(Yii::getAlias('@runtime/skeeks-ai-bridge.key')));
-        if ($key === '') {
-            throw new HttpException(503, 'Подключение SkeekS AI не настроено.');
-        }
-        $headers = [];
-        $curl = curl_init(rtrim($this->serviceUrl, '/') . $path);
-        curl_setopt_array($curl, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT => 240,
-            CURLOPT_HTTPHEADER => ['X-Skeeks-AI-Bridge: ' . $key, 'Content-Type: application/json'],
-            CURLOPT_COOKIE => 'skeeks_ai_pilot_' . $tab . '=' . $sid,
-            CURLOPT_HEADERFUNCTION => static function ($curl, $line) use (&$headers) {
-                if (strpos($line, ':') !== false) {
-                    [$name, $value] = explode(':', $line, 2);
-                    $headers[strtolower($name)] = trim($value);
-                }
-                return strlen($line);
-            },
-        ]);
-        if ($data !== null) {
-            curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode((object)$data, JSON_THROW_ON_ERROR));
-        }
-        $body = curl_exec($curl);
-        $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
-        if ($body === false) {
-            throw new HttpException(502, 'Нет ответа от SkeekS AI.');
-        }
-        return [$status, $headers, $body];
-    }
-
-    public function actionStart(string $tab, $company = '')
-    {
-        $key = $this->sessionKey($tab);
-        [$status, $headers] = $this->requestService('/panel/' . $tab . '/start?company=' . (int)$company, $tab);
-        $location = $headers['location'] ?? '';
-        if ($status !== 302 || !str_starts_with($location, Yii::$app->request->hostInfo . '/')
-            || !preg_match('/^skeeks_ai_pilot_' . $tab . '=([A-Za-z0-9_-]+);/', $headers['set-cookie'] ?? '', $m)) {
-            throw new HttpException(502, 'Не удалось начать авторизацию.');
-        }
-        Yii::$app->cache->set($key, $m[1], 86400);
-        return $this->redirect($location);
-    }
-
-    public function actionCallback(string $state, string $code)
-    {
-        $tab = explode('.', $state)[0];
-        [$status, $headers, $body] = $this->requestService('/callback?' . http_build_query(compact('state', 'code')), $tab);
-        if ($status !== 302 || ($headers['location'] ?? '') !== '/panel/' . $tab . '/') {
-            $error = json_decode($body, true)['error'] ?? '';
-            if (preg_match('/HTTP (\d{3})/', $error, $match)) {
-                throw new HttpException(502, 'CRM отклонила авторизацию (HTTP ' . $match[1] . ').');
-            }
-            throw new ForbiddenHttpException('Не удалось подтвердить вход в SkeekS AI.');
-        }
-        Yii::$app->response->headers->set('Referrer-Policy', 'no-referrer');
-        return '<script>parent.postMessage({tab:' . json_encode($tab) . '},location.origin)</script>';
+        // Event polling and file reads must not serialize behind the PHP session lock.
+        Yii::$app->session->close();
+        return true;
     }
 
     public function actionProjectFiles(int $offset = 0)
@@ -160,43 +96,72 @@ final class PanelController extends Controller
         return ['chats'=>$rows,'projects'=>$projects];
     }
 
-    public function actionApi(string $tab, string $op)
+    public function actionApi(string $op)
     {
         $request = Yii::$app->request;
-        $post = $request->isPost;
-        if (!(($post && in_array($op, ['message','confirm','select','new','settings'], true))
-            || ($request->isGet && in_array($op, ['history','settings','progress','file'], true)))) {
+        $response = Yii::$app->response;
+        $get = ['history', 'events', 'file', 'settings'];
+        $post = ['message', 'confirm', 'reject', 'cancel', 'settings'];
+        if (!($request->isGet && in_array($op, $get, true)) && !($request->isPost && in_array($op, $post, true))) {
             throw new HttpException(405);
         }
-        $data = $post ? json_decode($request->rawBody, true) : null;
-        if ($post && !is_array($data)) {
-            throw new BadRequestHttpException();
+        $data = [];
+        if ($request->isPost) {
+            $data = json_decode($request->rawBody, true);
+            if (!is_array($data)) {
+                throw new BadRequestHttpException();
+            }
         }
-        if ($op === 'message') {
-            $tokens = $data['uploads'] ?? [];
-            unset($data['uploads']);
-            $data['files'] = $this->attachments($tokens);
-        }
-        $path = '/panel/' . $tab . '/' . $op;
         if ($op === 'file') {
-            $path .= '?' . http_build_query(['chat' => (int)$request->get('chat'), 'id' => (int)$request->get('id')]);
+            $file = ChatApi::file((int)$request->get('chat'), (int)$request->get('id'));
+            $response->headers->set('X-Content-Type-Options', 'nosniff');
+            $image = preg_match('/^preview-[0-9]+-(phone|desktop)\.jpg$/D', $file['name']);
+            return $response->sendContentAsFile($file['content'], $file['name'], [
+                'mimeType' => $image ? 'image/jpeg' : 'application/octet-stream', 'inline' => (bool)$image,
+            ]);
         }
-        [$status, $headers, $body] = $this->requestService($path, $tab, $data);
-        $response = Yii::$app->response;
-        if ($status === 302) {
-            $response->format = Response::FORMAT_JSON;
-            $response->statusCode = 401;
-            return ['error' => 'Сессия завершилась. Откройте чат заново.'];
+        $response->format = Response::FORMAT_JSON;
+        try {
+            switch ($op) {
+                case 'history':
+                    $chat = $request->get('chat');
+                    return ChatApi::chat($chat === null || $chat === '' ? null : (int)$chat, (int)$request->get('company') ?: null);
+                case 'events':
+                    return ChatApi::events((int)$request->get('chat'), (int)$request->get('after'));
+                case 'message':
+                    $files = $this->attachments($data['uploads'] ?? []);
+                    unset($data['uploads']);
+                    return ChatApi::send($data, $files);
+                case 'confirm':
+                    return ChatApi::confirm((int)($data['chatId'] ?? 0), (string)($data['id'] ?? ''));
+                case 'reject':
+                    ChatApi::reject((int)($data['chatId'] ?? 0), (string)($data['id'] ?? ''));
+                    return ['ok' => true];
+                case 'cancel':
+                    return ChatApi::cancel((int)($data['chatId'] ?? 0), (int)($data['runId'] ?? 0));
+                case 'settings':
+                    return $this->settings($request->isPost ? ['op' => 'saveSettings'] + $data : ['op' => 'settings']);
+            }
+        } catch (HttpException $e) {
+            $response->statusCode = $e->statusCode;
+            return ['error' => $e->getMessage()];
         }
-        $response->statusCode = $status;
-        $response->format = Response::FORMAT_RAW;
-        $response->headers->set('Content-Type', $headers['content-type'] ?? 'application/json');
-        if ($op === 'file' && isset($headers['content-disposition'])) {
-            $response->headers->set('Content-Disposition', $headers['content-disposition']);
-        }
-        return $body;
+        throw new HttpException(405);
     }
 
+    private function settings(array $data): array
+    {
+        $project = ProjectKnowledge::settings((int)Yii::$app->skeeks->site->id, $data);
+        $root = Yii::getAlias('@skeeks/cms/ai/service') . '/../knowledge';
+        $global = is_file($root . '/AGENTS.md') ? (string)file_get_contents($root . '/AGENTS.md') : '';
+        $skills = [];
+        foreach (glob($root . '/skills/*/SKILL.md') ?: [] as $file) {
+            $skills[] = 'skeeks/' . basename(dirname($file));
+        }
+        return $project + ['globalRules' => $global, 'globalSkills' => $skills];
+    }
+
+    /** @return array [['name' => string, 'bytes' => string]] */
     private function attachments($tokens): array
     {
         if (!is_array($tokens) || count($tokens) > 4) {
@@ -209,7 +174,7 @@ final class PanelController extends Controller
             if (!$path || ($total += filesize($path)) > 4194304) {
                 throw new BadRequestHttpException('Проверьте вложения. Общий размер файлов ограничен 4 МБ.');
             }
-            $files[] = ['name' => TemporaryUploads::name($token), 'base64' => base64_encode(file_get_contents($path))];
+            $files[] = ['name' => TemporaryUploads::name($token), 'bytes' => (string)file_get_contents($path)];
         }
         return $files;
     }

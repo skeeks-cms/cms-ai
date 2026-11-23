@@ -14,7 +14,7 @@ final class StandChat implements BootstrapInterface
 {
     public function bootstrap($app)
     {
-        $app->urlManager->addRules(['ai-panel/<action:start|callback|api|sidebar|project-files|project-download|project-save>' => 'ai-panel/<action>'], false);
+        $app->urlManager->addRules(['ai-panel/<action:api|sidebar|project-files|project-download|project-save>' => 'ai-panel/<action>'], false);
         Event::on(BackendShellHeaderWidget::class, BackendShellHeaderWidget::EVENT_BEFORE_RUN, static function ($event) {
             $header = $event->sender;
             if ($header->view->theme instanceof AdminTheme && !\Yii::$app->user->isGuest) {

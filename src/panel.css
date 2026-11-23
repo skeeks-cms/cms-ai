@@ -43,3 +43,4 @@
 @keyframes sx-ai-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.sx-ai-panel .sx-ai-working::before{animation:none}}
 #sx-ai-job:empty,#sx-ai-status:empty{display:none}
+.sx-ai-panel .sx-ai-actions{display:flex;flex-wrap:wrap;gap:.5rem}.sx-ai-panel .sx-ai-jobline{display:flex;align-items:center;gap:.75rem}.sx-ai-panel .sx-ai-jobline p{margin:0;flex:1;min-width:0}

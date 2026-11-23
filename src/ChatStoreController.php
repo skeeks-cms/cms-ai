@@ -2,6 +2,7 @@
 
 namespace skeeks\cms\ai;
 
+use skeeks\cms\ai\service\RunBridge;
 use skeeks\cms\mcp\controllers\BearerAuthenticatedController;
 use Yii;
 use yii\db\Query;
@@ -41,31 +42,18 @@ final class ChatStoreController extends BearerAuthenticatedController
         if (in_array($op, ['settings','saveSettings'], true)) {
             return ProjectKnowledge::settings($scope['site_id'], $data);
         }
-        if ($op === 'list') {
-            return ['owner_id' => $scope['owner_id'], 'chats' => $chats->select(['id','title','company_id'])->orderBy(['updated_at'=>SORT_DESC,'id'=>SORT_DESC])->all()];
-        }
-        if ($op === 'new') {
-            $engine = $data['engine'] ?? 'codex';
-            if (!in_array($engine, ['codex','claude-vclaude','claude-personal'], true)) {
-                throw new BadRequestHttpException('Неизвестный движок чата.');
-            }
-            $db->createCommand()->insert(self::CHAT, $scope + [
-                'engine' => $engine,
-                'title' => 'Новый чат', 'updated_at' => time(), 'company_id' => $data['company'] ?: null,
-            ])->execute();
-            return ['id' => (int)$db->lastInsertID];
-        }
         $where = $scope + ['id' => (int)$data['id']];
-        return $db->transaction(function () use ($db,$data,$op,$where,$chats,$key,$token) {
-            if (in_array($op,['queueAgent','agentStart','agentClaimWrite','agentWriteResult','agentFinish'],true)) {
+        return $db->transaction(function () use ($db,$data,$op,$where,$chats,$token) {
+            $executor = in_array($op, RunBridge::OPS, true);
+            if ($executor) {
                 $db->createCommand('SELECT id FROM {{%cms_ai_chat}} WHERE id=:id FOR UPDATE',[':id'=>$where['id']])->queryScalar();
             }
             $chat = $chats->andWhere(['id'=>$where['id']])->one();
             if (!$chat) {
                 throw new NotFoundHttpException();
             }
-            if (in_array($op,['queueAgent','agentStart','agentClaimWrite','agentWriteResult','agentFinish'],true)) {
-                return AgentJob::handle($op,$chat,$data,$key);
+            if ($executor) {
+                return RunBridge::handle($op,$chat,$data);
             }
             if ($op === 'previewTree') {
                 $treeId = (int)$data['treeId'];
@@ -132,48 +120,10 @@ final class ChatStoreController extends BearerAuthenticatedController
                 if ($engine === 'codex') {
                     $changes['thread_id'] = $session;
                 }
-            } elseif ($op === 'append') {
-                if (!in_array($data['role'], ['user','assistant'], true) || !is_string($data['text'])) {
-                    throw new BadRequestHttpException();
-                }
-                $db->createCommand()->insert(self::MESSAGE, [
-                    'chat_id'=>$chat['id'], 'role'=>$data['role'], 'text'=>$data['text'], 'created_at'=>time(),
-                ])->execute();
-                $messageId = (int)$db->lastInsertID;
-                $files = $data['files'] ?? [];
-                if (!is_array($files) || count($files)>4) {
-                    throw new BadRequestHttpException();
-                }
-                $size = 0;
-                foreach ($files as $file) {
-                    $bytes = base64_decode($file['base64'], true);
-                    $name = $file['name'] ?? '';
-                    if ($bytes === false || !is_string($name) || trim($name)==='' || mb_strlen($name)>200 ||
-                        preg_match('~[[:cntrl:]/\\\\]~',$name) || strlen($bytes)>4194304 || ($size+=strlen($bytes))>4194304) {
-                        throw new BadRequestHttpException('Некорректное вложение.');
-                    }
-                    $db->createCommand()->insert('{{%cms_ai_attachment}}', [
-                        'message_id'=>$messageId, 'name'=>$name, 'size'=>strlen($bytes), 'content'=>$bytes,
-                    ])->execute();
-                }
-                if ($chat['title'] === 'Новый чат' && $data['role'] === 'user') {
-                    $changes['title'] = mb_substr($data['text'],0,100);
-                }
-                $changes['pending'] = isset($data['pending']) ? json_encode($data['pending'], JSON_THROW_ON_ERROR) : null;
-            } elseif ($op === 'consume') {
-                $pending = json_decode($chat['pending'] ?? 'null', true);
-                if (!$pending || $pending['id'] !== $data['confirmation']) {
-                    throw new BadRequestHttpException('Действие уже обработано.');
-                }
-                $where['pending'] = $chat['pending'];
-                $changes['pending'] = null;
             } else {
                 throw new BadRequestHttpException();
             }
-            $count = $db->createCommand()->update(self::CHAT,$changes,$where)->execute();
-            if ($op === 'consume' && !$count) {
-                throw new BadRequestHttpException('Действие уже обработано.');
-            }
+            $db->createCommand()->update(self::CHAT,$changes,$where)->execute();
             return ['ok'=>true];
         });
     }
