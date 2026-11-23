@@ -1,0 +1,45 @@
+.sx-ai-panel{box-sizing:border-box;position:fixed;inset:0 0 0 auto;width:min(36rem,100vw);max-width:100vw;height:100dvh;max-height:100dvh;margin:0;padding:0;border:0;border-left:1px solid var(--sx-color-border);background:var(--sx-color-surface);color:var(--sx-color-text);font:inherit}
+.sx-ai-panel[open]{display:flex;flex-direction:column}.sx-ai-panel::backdrop{background:#0005}
+.sx-ai-panel header,.sx-ai-panel nav{display:flex;align-items:center;gap:.75rem}.sx-ai-panel header{justify-content:space-between;padding:1rem;border-bottom:1px solid var(--sx-color-border)}
+.sx-ai-panel main{overflow:auto;padding:1rem;flex:1}.sx-ai-panel details,.sx-ai-panel form,.sx-ai-panel article,.sx-ai-panel aside{margin:.8rem 0}.sx-ai-panel article,.sx-ai-panel aside{padding:.8rem 1rem;border:1px solid var(--sx-color-border);border-radius:.6rem;background:var(--sx-color-surface-raised);white-space:pre-wrap;overflow-wrap:anywhere}.sx-ai-panel article.user{margin-left:12%;background:var(--sx-color-surface-hover)}
+.sx-ai-panel form label,.sx-ai-panel details label{display:block}.sx-ai-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;color:inherit}.sx-ai-panel iframe{width:100%;min-height:8rem;border:0}.sx-ai-panel [hidden]{display:none!important}.sx-ai-panel nav select{min-width:0;flex:1}.sx-ai-panel nav button{white-space:nowrap}
+
+.sx-ai-screenshot{display:block;max-width:100%;max-height:20rem;height:auto;margin-block:.5rem}
+.sx-ai-panel{width:min(72rem,100vw)}
+.sx-ai-panel header{flex:none;padding:.65rem 1rem}
+.sx-ai-panel main{display:grid;grid-template-columns:minmax(13rem,23%) minmax(0,1fr);min-height:0;overflow:hidden;padding:0}
+.sx-ai-panel #sx-ai-sidebar{flex-direction:column;align-items:stretch;gap:.75rem;min-height:0;overflow:auto;padding:1rem .75rem;border-inline-end:1px solid var(--sx-color-border);background:var(--sx-color-surface-hover)}
+#sx-ai-sidebar>strong{padding-inline:.5rem;font-size:.88em}
+#sx-ai-chats{overflow:auto;min-height:4rem;flex:1}
+#sx-ai-chats button{display:block;width:100%;border:0;border-radius:.4rem;text-align:start;padding:.55rem .6rem;background:transparent;color:inherit;font:inherit;cursor:pointer;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+#sx-ai-chats button:hover,#sx-ai-chats button[aria-current]{background:var(--sx-color-surface)}
+#sx-ai-chats button[aria-current]{font-weight:600}
+.sx-ai-project-tools{max-height:42%;overflow:auto;border-top:1px solid var(--sx-color-border);overflow-wrap:anywhere}
+.sx-ai-conversation{display:flex;flex-direction:column;min-height:0;min-width:0}
+#sx-ai-scroll{flex:1;min-height:0;overflow:auto;padding:1rem clamp(.8rem,3vw,2.5rem);overscroll-behavior:contain}
+#sx-ai-title{font-size:1.12rem;line-height:1.4;margin:.25rem 0 1rem;overflow-wrap:anywhere}
+.sx-ai-composer{flex:none;max-height:45%;overflow:auto;padding:.65rem clamp(.8rem,3vw,2.5rem);border-top:1px solid var(--sx-color-border)}
+.sx-ai-composer form{margin:0}
+.sx-ai-panel p:empty{display:none}
+#sx-ai-toggleChats{display:none}
+@media(max-width:700px){
+ .sx-ai-panel main{grid-template-columns:minmax(0,1fr)}
+ #sx-ai-toggleChats{display:inline-flex}
+ .sx-ai-panel #sx-ai-sidebar{display:none}
+ .sx-ai-panel.sx-ai-show-chats #sx-ai-sidebar{display:flex}
+ .sx-ai-panel.sx-ai-show-chats .sx-ai-conversation{display:none}
+}
+
+#sx-ai-chats details{margin:.4rem 0}
+#sx-ai-chats summary{padding:.35rem .45rem;font-size:.88em;font-weight:600;overflow-wrap:anywhere;cursor:pointer}
+.sx-ai-chat-row{display:flex;align-items:center}
+#sx-ai-chats button[data-chat]{min-width:0;flex:1}
+#sx-ai-chats .sx-ai-pin{width:2.1rem;flex:none;text-align:center;padding:.4rem 0}
+#sx-ai-listStatus:empty{display:none}
+#sx-ai-groupLabel{display:block;padding:.55rem .25rem}
+#sx-ai-groupLabel[hidden]{display:none}
+
+.sx-ai-panel .sx-ai-working::before{content:"";display:inline-block;width:.85em;height:.85em;margin-inline-end:.5em;vertical-align:-.06em;border:2px solid currentColor;border-inline-end-color:transparent;border-radius:50%;animation:sx-ai-spin .9s linear infinite}
+@keyframes sx-ai-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.sx-ai-panel .sx-ai-working::before{animation:none}}
+#sx-ai-job:empty,#sx-ai-status:empty{display:none}

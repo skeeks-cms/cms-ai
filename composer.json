@@ -1,0 +1,23 @@
+{
+    "name": "skeeks/cms-ai",
+    "description": "SkeekS AI chat panel for SkeekS CMS sites",
+    "keywords": ["yii", "skeeks", "cms", "ai"],
+    "homepage": "https://cms.skeeks.com/",
+    "type": "yii2-extension",
+    "license": "BSD-3-Clause",
+    "support": {
+        "issues": "https://skeeks.com/",
+        "source": "https://github.com/skeeks-cms/cms-ai"
+    },
+    "require": {
+        "php": ">=8.2",
+        "ext-curl": "*",
+        "skeeks/cms": "^6.4.9 || dev-master",
+        "skeeks/cms-job": "^1.4 || dev-master"
+    },
+    "autoload": {
+        "psr-4": {
+            "skeeks\\cms\\ai\\": "src/"
+        }
+    }
+}
