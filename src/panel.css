@@ -49,7 +49,10 @@
 #sx-ai-scroll>*,.sx-ai-composer>*{max-width:50rem;margin-inline:auto}
 #sx-ai-title{font-size:1.12rem;line-height:1.4;margin:.25rem auto 1rem;overflow-wrap:anywhere}
 .sx-ai-composer{flex:none;max-height:45%;overflow:auto;padding:.65rem clamp(.8rem,3vw,2.5rem);border-top:1px solid var(--sx-color-border)}
-.sx-ai-composer form{margin:0}
+.sx-ai-composer form{margin:0 auto}
+/* Messages and the composer share one centred column; the scrollbar must not shift it. */
+#sx-ai-scroll{scrollbar-gutter:stable both-edges}
+.sx-ai-composer{scrollbar-gutter:stable both-edges}
 .sx-ai-panel details,.sx-ai-panel article,.sx-ai-panel aside{margin:.8rem 0}
 .sx-ai-panel article,.sx-ai-panel aside{padding:.8rem 1rem;border:1px solid var(--sx-color-border);border-radius:.6rem;background:var(--sx-color-surface-raised);white-space:pre-wrap;overflow-wrap:anywhere}
 .sx-ai-panel article.user{margin-left:12%;background:var(--sx-color-surface-hover)}
