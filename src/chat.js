@@ -492,7 +492,8 @@ let sidePref=null;try{sidePref=localStorage.getItem("sx-ai-side");}catch{}
 showSide(sidePref===null?wide.matches:sidePref==="1" && wide.matches,false);
 wide.addEventListener("change",e=>{if(!e.matches)showSide(false,false);});
 el("toggleSide").onclick=()=>showSide(!panel.classList.contains("sx-ai-side-open"),wide.matches);
-el("closeSide").onclick=()=>{showSide(false,wide.matches);el("toggleSide").focus();};
+// Return focus only after a keyboard close: a programmatic focus after typing would draw a stray ring.
+el("closeSide").onclick=e=>{showSide(false,wide.matches);if(e.detail===0)el("toggleSide").focus();else panel.querySelector("[data-sx-rte-editor]")?.focus({preventScroll:true});};
 let revision;
 el("project").ontoggle=async()=>{
  if(!el("project").open)return;
@@ -563,7 +564,7 @@ document.addEventListener("click",event=>{
  const trigger=event.target.closest("[data-sx-ai-open]");
  if(!trigger)return;
  const company=trigger.dataset.sxAiCompany || document.querySelector("[data-sx-ai-company]")?.dataset.sxAiCompany || "";
- if(!panel.open){panel.showModal();panel.getBoundingClientRect();panel.classList.add("is-shown");}
+ if(!panel.open){panel.showModal();panel.getBoundingClientRect();panel.classList.add("is-shown");panel.querySelector("[data-sx-rte-editor]")?.focus({preventScroll:true});}
  if(company===context && current){
    if(chatId)open({chat:chatId}).catch(e=>el("status").textContent=e.message);
    return;
@@ -585,6 +586,7 @@ function closePanel(){
  panel.addEventListener("transitionend",onEnd);
  closing=setTimeout(done,450);
 }
-panel.addEventListener("cancel",e=>{e.preventDefault();if(!menu)closePanel();});
+// "cancel" also bubbles from a file input when the picker is dismissed; only Esc on the dialog closes it.
+panel.addEventListener("cancel",e=>{if(e.target!==panel)return;e.preventDefault();if(!menu)closePanel();});
 panel.querySelector("[data-sx-ai-close]").onclick=closePanel;
 })();
