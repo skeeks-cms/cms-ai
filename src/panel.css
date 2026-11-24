@@ -29,7 +29,11 @@
 .sx-ai-chat-row{position:relative;display:flex;align-items:center;border-radius:.45rem}
 .sx-ai-chat-row:hover,.sx-ai-chat-row:focus-within{background:var(--sx-color-surface)}
 #sx-ai-chats button[data-chat]{flex:1;min-width:0;border:0;border-radius:.45rem;background:transparent;color:inherit;font:inherit;text-align:start;padding:.45rem .6rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#sx-ai-chats button[aria-current]{background:var(--sx-color-surface);font-weight:600}
+#sx-ai-chats button[aria-current]{font-weight:600}
+.sx-ai-chat-row:has(button[aria-current]){background:var(--sx-color-surface)}
+/* Room on the right for "⋯" and the scrollbar. */
+#sx-ai-sidebar{padding-inline:.5rem .75rem;scrollbar-gutter:stable}
+.sx-ai-more{margin-inline-end:.15rem}
 .sx-ai-more{flex:none;width:2rem;height:2rem;border:0;border-radius:.4rem;background:transparent;color:inherit;font:inherit;font-size:1.1em;line-height:1;cursor:pointer;opacity:0}
 .sx-ai-chat-row:hover .sx-ai-more,.sx-ai-chat-row:focus-within .sx-ai-more,.sx-ai-more[aria-expanded=true]{opacity:1}
 .sx-ai-more:hover{background:var(--sx-color-surface-hover)}
