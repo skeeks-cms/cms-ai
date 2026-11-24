@@ -364,6 +364,14 @@ function typeIn(node){
  setTimeout(tick,16);
 }
 let seenAnswer=0;
+// Model choice next to the composer: the account's models of the chat engine plus the engine default.
+function renderModels(engine,selected){
+ const list=(current?.models||{})[engine]||[];
+ const picker=el("model");
+ picker.replaceChildren(new Option("Модель по умолчанию",""),...list.map(m=>new Option(m.title,m.id)));
+ picker.value=list.some(m=>m.id===selected)?selected:"";
+ el("modelLabel").hidden=!list.length;
+}
 function render(data){
  current=data;
  const picker=el("engine");
@@ -375,6 +383,7 @@ function render(data){
  const engineNames={"codex":"Codex","claude-vclaude":"Claude · VClaude","claude-personal":"Claude"};
  el("engineName").hidden=!data.chatId;
  el("engineName").textContent=engineNames[data.engine]||data.engine||"";
+ renderModels(data.chatId?data.engine:picker.value,data.chatId?data.model:el("model").value);
  const scroll=el("scroll");
  const follow=chatId!==data.chatId || scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80;
  if(chatId!==data.chatId)seenAnswer=0;
@@ -475,7 +484,7 @@ async function sendMessage(message,uploads){
  const clientKey=crypto.randomUUID().replaceAll("-","");
  await action(async()=>{
   try{
-   const result=await call("message",{chatId,engine:el("engine").value,company:context||null,clientKey,message,uploads});
+   const result=await call("message",{chatId,engine:el("engine").value,model:el("model").value,company:context||null,clientKey,message,uploads});
    editor.replaceChildren();el("message").value="";panel.querySelector("[data-sx-attach-list]").replaceChildren();
    await open({chat:result.chatId});
   }catch(e){bubble.remove();throw e;}
@@ -505,6 +514,7 @@ panel.addEventListener("close",()=>{showChats(false);closeMenu();});
 panel.addEventListener("click",e=>{if(menu && !e.target.closest(".sx-ai-menu"))closeMenu();});
 panel.addEventListener("keydown",e=>{if(e.key==="Escape" && menu){e.preventDefault();const owner=menu.owner;closeMenu();owner?.focus();}});
 // Search opens as a field under its row, like the desktop app.
+el("engine").onchange=()=>{if(!chatId)renderModels(el("engine").value,"");};
 el("searchToggle").onclick=()=>{
  const field=el("search"),open=field.hidden;
  field.hidden=!open;el("searchToggle").setAttribute("aria-expanded",String(open));
