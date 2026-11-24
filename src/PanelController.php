@@ -106,7 +106,7 @@ final class PanelController extends Controller
     {
         $request = Yii::$app->request;
         $response = Yii::$app->response;
-        $get = ['history', 'events', 'file', 'settings'];
+        $get = ['history', 'events', 'file', 'settings', 'usage'];
         $post = ['message', 'confirm', 'reject', 'cancel', 'settings', 'rename', 'delete', 'steer'];
         if (!($request->isGet && in_array($op, $get, true)) && !($request->isPost && in_array($op, $post, true))) {
             throw new HttpException(405);
@@ -132,6 +132,8 @@ final class PanelController extends Controller
                 case 'history':
                     $chat = $request->get('chat');
                     return ChatApi::chat($chat === null || $chat === '' ? null : (int)$chat, (int)$request->get('company') ?: null);
+                case 'usage':
+                    return ChatApi::usage((int)$request->get('chat') ?: null);
                 case 'events':
                     return ChatApi::events((int)$request->get('chat'), (int)$request->get('after'));
                 case 'message':

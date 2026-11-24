@@ -255,9 +255,17 @@ function renderActivity(events,reset){
  const scroll=el("scroll");
  if(scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<120)scroll.scrollTop=scroll.scrollHeight;
 }
-function doneSteps(texts){
+// Numbers for people: 18,2 тыс. токенов, 42 с, ~$0,03.
+const fmt={
+ tokens:n=>n>=1e6?(n/1e6).toLocaleString("ru-RU",{maximumFractionDigits:1})+" млн":n>=1e3?(n/1e3).toLocaleString("ru-RU",{maximumFractionDigits:1})+" тыс.":String(n),
+ seconds:s=>s>=3600?Math.floor(s/3600)+" ч "+Math.round(s%3600/60)+" мин":s>=60?Math.floor(s/60)+" мин "+(s%60)+" с":s+" с",
+ usd:v=>v===null||v===undefined?"":"~$"+Number(v).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:v<1?4:2}),
+};
+function doneSteps(texts,stat){
  const box=document.createElement("details");box.className="sx-ai-steps-done";
- const summary=document.createElement("summary");summary.textContent="Ход работы · шагов: "+texts.length;
+ const summary=document.createElement("summary");
+ summary.textContent=["Ход работы · шагов: "+texts.length,...(stat?[stat.seconds?fmt.seconds(stat.seconds):"",stat.tokens?fmt.tokens(stat.tokens)+" токенов":"",fmt.usd(stat.cost)]:[])].filter(Boolean).join(" · ");
+ if(stat?.model)summary.title="Модель: "+stat.model;
  const list=document.createElement("ol");list.className="sx-ai-steps";
  for(const t of texts){const li=document.createElement("li");li.className="is-done";li.textContent=t;list.append(li);}
  box.append(summary,list);
@@ -408,7 +416,7 @@ function render(data){
   }
   el("messages").append(item);
   const steps=entry.role==="user" && data.steps?.[entry.id];
-  if(steps && steps.length)el("messages").append(doneSteps(steps));
+  if(steps && steps.length)el("messages").append(doneSteps(steps,data.runStats?.[entry.id]));
   if(entry.role==="assistant" && newAnswer && Number(entry.id)>seenAnswer)typeIn(item);
  }
  const answers=data.history.filter(e=>e.role==="assistant");
@@ -446,7 +454,7 @@ function poll(){
    run=data.run;
    if(data.events.length){lastEventId=data.events.at(-1).id;renderActivity(data.events.filter(e=>e.run===run?.id),false);}
    renderRun();
-   if(finished){await open({chat:expected});flushQueue();return;}
+   if(finished){await open({chat:expected});flushQueue();refreshUsage();return;}
    if(active(run))poll();
   }catch{el("job").textContent="Не удалось обновить ход работы. Повторяю…";pollTimer=setTimeout(poll,3000);}
  },1000);
@@ -516,6 +524,50 @@ wide.addEventListener("change",e=>{if(!e.matches)showSide(false,false);});
 el("toggleSide").onclick=()=>showSide(!panel.classList.contains("sx-ai-side-open"),wide.matches);
 // Return focus only after a keyboard close: a programmatic focus after typing would draw a stray ring.
 el("closeSide").onclick=e=>{showSide(false,wide.matches);if(e.detail===0)el("toggleSide").focus();else panel.querySelector("[data-sx-rte-editor]")?.focus({preventScroll:true});};
+// Side panel "Расход": tokens of this chat, mine for the month and, for administrators, the account.
+const usageBox=el("usage");
+function usageTable(title,rows,label){
+ if(!rows || !rows.length)return null;
+ const wrap=document.createElement("div");wrap.className="sx-ai-usage-group";
+ const h=document.createElement("strong");h.textContent=title;wrap.append(h);
+ const table=document.createElement("table");table.className="sx-ai-usage-table";
+ for(const r of rows){
+  const tr=document.createElement("tr"),name=document.createElement("td"),val=document.createElement("td");
+  name.textContent=label(r);name.title=name.textContent;
+  val.textContent=fmt.tokens(r.input+r.output)+(r.cost!==null && r.cost!==undefined?" · "+fmt.usd(r.cost):"");
+  tr.append(name,val);table.append(tr);
+ }
+ wrap.append(table);return wrap;
+}
+function usageTotal(title,t){
+ if(!t)return null;
+ const wrap=document.createElement("div");wrap.className="sx-ai-usage-total";
+ const h=document.createElement("strong");h.textContent=title;
+ const p=document.createElement("p");
+ p.textContent=t.runs?[ "Поручений: "+t.runs, "вход "+fmt.tokens(t.input)+(t.cached?" (из кеша "+fmt.tokens(t.cached)+")":""), "выход "+fmt.tokens(t.output),
+  t.seconds?fmt.seconds(t.seconds):"", t.cost!==null?fmt.usd(t.cost)+(t.unpriced?" без учёта "+t.unpriced+" без цены":""):"цена не указана"].filter(Boolean).join(" · "):"Пока нет поручений.";
+ wrap.append(h,p);return wrap;
+}
+async function refreshUsage(){
+ if(!usageBox.open)return;
+ const body=usageBox.querySelector(".sx-ai-usage-body");
+ try{
+  const r=await fetch(endpoint("usage",{chat:chatId}));const d=await r.json();
+  if(!r.ok)throw Error(d.error||"Не удалось загрузить расход.");
+  const note=document.createElement("p");note.className="sx-ai-note";
+  note.textContent="Токены — по данным движков. Сумма в долларах — ориентир по официальным ценам API, не счёт.";
+  body.replaceChildren(...[
+   chatId?usageTotal("Этот чат",d.chat):null,
+   usageTotal("Мои поручения за "+d.month,d.mine),
+   usageTable("По моделям",d.mineByModel,r=>r.title),
+   usageTable("По проектам",d.mineByProject,r=>r.project||"Без проекта"),
+   usageTable("По чатам",d.mineByChat,r=>r.title),
+   d.account?usageTotal("Весь аккаунт за "+d.month,d.account):null,
+   d.account?usageTable("По сотрудникам",d.accountByUser,r=>r.user):null,
+   note].filter(Boolean));
+ }catch(e){body.replaceChildren(Object.assign(document.createElement("p"),{className:"sx-ai-note",textContent:e.message}));}
+}
+usageBox.ontoggle=refreshUsage;
 let revision;
 el("project").ontoggle=async()=>{
  if(!el("project").open)return;

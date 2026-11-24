@@ -175,3 +175,11 @@ html.sx-ai-open,html.sx-ai-open body{overflow:hidden!important}
 .sx-ai-chat-row.has-state:hover .sx-ai-more,.sx-ai-chat-row.has-state:focus-within .sx-ai-more,.sx-ai-chat-row.has-state .sx-ai-more[aria-expanded=true]{display:inline-block}
 @media(prefers-reduced-motion:reduce){.sx-ai-chat-state.is-working::before{animation:none}}
 @media(hover:none){.sx-ai-chat-row.has-state .sx-ai-more{display:inline-block}}
+/* "Расход" in the side panel. */
+.sx-ai-usage-total{margin:.4rem 0 .7rem}
+.sx-ai-usage-total p{margin:.2rem 0;font-size:.92em}
+.sx-ai-usage-group{margin:.4rem 0 .7rem}
+.sx-ai-usage-table{width:100%;border-collapse:collapse;font-size:.9em;margin-top:.2rem;table-layout:fixed}
+.sx-ai-usage-table td{padding:.2rem 0;border-bottom:1px solid var(--sx-color-border);vertical-align:top}
+.sx-ai-usage-table td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-inline-end:.5rem}
+.sx-ai-usage-table td:last-child{text-align:end;white-space:nowrap;width:45%;color:var(--sx-color-text-muted,inherit)}
