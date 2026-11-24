@@ -22,13 +22,6 @@ const active=r=>r && ["queued","running"].includes(r.status);
 const folder=el("folder");
 // Short value at the right of a side panel row (like the Claude side panel).
 const rowValue=(id,...content)=>el(id).querySelector(":scope>summary .sx-ai-row-value").replaceChildren(...content);
-// One section at a time on its own screen; closing it (its title is the back button) returns to the list.
-const sideSections=[...panel.querySelectorAll(".sx-ai-side-section")];
-for(const section of sideSections)section.addEventListener("toggle",()=>{
- if(section.open)for(const other of sideSections)if(other!==section)other.open=false;
- el("side").classList.toggle("sx-ai-side-drill",sideSections.some(x=>x.open));
- if(section.open)el("side").scrollTop=0;
-});
 async function saveProjectFile(file, ownerChat){
  const response=await fetch("/ai-panel/project-save",{method:"POST",
   headers:{"Content-Type":"application/json","X-CSRF-Token":yii.getCsrfToken(),"X-Skeeks-AI-Chat":String(ownerChat)},
