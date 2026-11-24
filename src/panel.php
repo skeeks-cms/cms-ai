@@ -43,6 +43,7 @@ $icon = static function (string $path): string {
 <label id="sx-ai-engineLabel" class="sx-ai-chip" title="Движок нового чата"><span class="sx-ai-visually-hidden">Движок нового чата</span><select id="sx-ai-engine"></select></label>
 <span id="sx-ai-engineName" class="sx-ai-chip" hidden></span>
 <label id="sx-ai-modelLabel" class="sx-ai-chip" hidden title="Модель для следующего поручения"><span class="sx-ai-visually-hidden">Модель</span><select id="sx-ai-model"></select></label>
+<label id="sx-ai-effortLabel" class="sx-ai-chip" hidden title="Глубина рассуждений: выше — точнее, но дольше и больше токенов"><span class="sx-ai-visually-hidden">Глубина рассуждений</span><select id="sx-ai-effort"></select></label>
 <span class="sx-ai-spacer"></span>
 <p id="sx-ai-job" role="status"></p>
 </div>

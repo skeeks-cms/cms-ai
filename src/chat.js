@@ -365,12 +365,23 @@ function typeIn(node){
 }
 let seenAnswer=0;
 // Model choice next to the composer: the account's models of the chat engine plus the engine default.
-function renderModels(engine,selected){
+function renderModels(engine,selected,effort){
  const list=(current?.models||{})[engine]||[];
  const picker=el("model");
  picker.replaceChildren(new Option("Модель по умолчанию",""),...list.map(m=>new Option(m.title,m.id)));
  picker.value=list.some(m=>m.id===selected)?selected:"";
  el("modelLabel").hidden=!list.length;
+ renderEfforts(engine,effort);
+}
+// Reasoning depth of the chosen model; "стандартно" keeps the executor default.
+const effortTitles={low:"Низкая",medium:"Средняя",high:"Высокая",xhigh:"Очень высокая",max:"Максимальная"};
+function renderEfforts(engine,selected){
+ const model=el("model").value;
+ const levels=model?(((current?.models||{})[engine]||[]).find(m=>m.id===model)?.efforts||[]):((current?.engineEfforts||{})[engine]||[]);
+ const picker=el("effort");
+ picker.replaceChildren(new Option("Рассуждения: стандартно",""),...levels.map(l=>new Option("Рассуждения: "+effortTitles[l].toLowerCase(),l)));
+ picker.value=levels.includes(selected)?selected:"";
+ el("effortLabel").hidden=!levels.length;
 }
 function render(data){
  current=data;
@@ -383,7 +394,7 @@ function render(data){
  const engineNames={"codex":"Codex","claude-vclaude":"Claude · VClaude","claude-personal":"Claude"};
  el("engineName").hidden=!data.chatId;
  el("engineName").textContent=engineNames[data.engine]||data.engine||"";
- renderModels(data.chatId?data.engine:picker.value,data.chatId?data.model:el("model").value);
+ renderModels(data.chatId?data.engine:picker.value,data.chatId?data.model:el("model").value,data.chatId?data.effort:el("effort").value);
  const scroll=el("scroll");
  const follow=chatId!==data.chatId || scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80;
  if(chatId!==data.chatId)seenAnswer=0;
@@ -484,7 +495,7 @@ async function sendMessage(message,uploads){
  const clientKey=crypto.randomUUID().replaceAll("-","");
  await action(async()=>{
   try{
-   const result=await call("message",{chatId,engine:el("engine").value,model:el("model").value,company:context||null,clientKey,message,uploads});
+   const result=await call("message",{chatId,engine:el("engine").value,model:el("model").value,effort:el("effort").value,company:context||null,clientKey,message,uploads});
    editor.replaceChildren();el("message").value="";panel.querySelector("[data-sx-attach-list]").replaceChildren();
    await open({chat:result.chatId});
   }catch(e){bubble.remove();throw e;}
@@ -514,7 +525,8 @@ panel.addEventListener("close",()=>{showChats(false);closeMenu();});
 panel.addEventListener("click",e=>{if(menu && !e.target.closest(".sx-ai-menu"))closeMenu();});
 panel.addEventListener("keydown",e=>{if(e.key==="Escape" && menu){e.preventDefault();const owner=menu.owner;closeMenu();owner?.focus();}});
 // Search opens as a field under its row, like the desktop app.
-el("engine").onchange=()=>{if(!chatId)renderModels(el("engine").value,"");};
+el("engine").onchange=()=>{if(!chatId)renderModels(el("engine").value,"","");};
+el("model").onchange=()=>renderEfforts(chatId?current.engine:el("engine").value,el("effort").value);
 el("searchToggle").onclick=()=>{
  const field=el("search"),open=field.hidden;
  field.hidden=!open;el("searchToggle").setAttribute("aria-expanded",String(open));
