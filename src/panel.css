@@ -109,3 +109,31 @@
 @keyframes sx-ai-blink{50%{opacity:0}}
 @media(max-width:560px){.sx-ai-panel .sx-ai-pending-fields{grid-template-columns:1fr}.sx-ai-panel .sx-ai-pending-fields dd{margin-bottom:.3rem}}
 @media(prefers-reduced-motion:reduce){.sx-ai-panel .sx-ai-working::before,.sx-ai-panel .sx-ai-steps li,.sx-ai-panel .sx-ai-steps li.is-running::before,.sx-ai-panel article.is-typing::after{animation:none}}
+/* Composer like the desktop app: one rounded box, "+" for files, round send/stop button, chips below. */
+.sx-ai-composer{border-top:0;padding-top:.4rem}
+.sx-ai-box{display:flex;flex-direction:column;gap:.3rem;padding:.45rem .5rem;border:1px solid var(--sx-color-border);border-radius:1rem;background:var(--sx-color-surface-raised,var(--sx-color-surface));transition:border-color .15s}
+.sx-ai-box:focus-within{border-color:var(--sx-color-accent-border,var(--sx-color-accent,var(--sx-color-border)))}
+.sx-ai-box-row{display:flex;align-items:flex-end;gap:.35rem}
+.sx-ai-box .sx-rte{flex:1;min-width:0;border:0;background:transparent;box-shadow:none;margin:0}
+.sx-ai-box .sx-rte__tools{display:none}
+.sx-ai-box .sx-rte__editor{min-height:1.6rem!important;max-height:38vh;overflow:auto;border:0;background:transparent;box-shadow:none;padding:.35rem .25rem;outline:none}
+.sx-ai-box .sx-attach__list:empty{display:none}
+.sx-ai-box .sx-attach__list{display:flex;flex-wrap:wrap;gap:.35rem;padding:.1rem .2rem}
+.sx-ai-round,.sx-ai-send{flex:none;display:inline-flex;align-items:center;justify-content:center;width:2.15rem;height:2.15rem;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer}
+.sx-ai-round:hover{background:var(--sx-color-surface-hover)}
+.sx-ai-round.is-on{color:var(--sx-color-danger,#d33);background:var(--sx-color-surface-hover)}
+.sx-ai-send{background:var(--sx-color-text);color:var(--sx-color-surface)}
+.sx-ai-send:hover{opacity:.85}
+.sx-ai-send.is-stop .sx-ai-icon{fill:currentColor;stroke:none}
+.sx-ai-send:disabled{opacity:.45;cursor:default}
+.sx-ai-round:focus-visible,.sx-ai-send:focus-visible{outline:2px solid var(--sx-color-accent,currentColor);outline-offset:2px}
+.sx-ai-box-meta{display:flex;align-items:center;gap:.5rem;min-height:1.8rem;padding:.3rem .25rem 0;font-size:.88em;color:var(--sx-color-text-muted,inherit)}
+.sx-ai-box-meta #sx-ai-job{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sx-ai-chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--sx-color-border);border-radius:.45rem;padding:.1rem .45rem}
+.sx-ai-chip select{border:0;background:transparent;color:inherit;font:inherit;padding:.1rem 0;cursor:pointer}
+.sx-ai-chip select option{color:var(--sx-color-text);background:var(--sx-color-surface)}
+.sx-ai-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.sx-ai-queue{display:flex;align-items:center;gap:.5rem;margin:0 auto .4rem;padding:.35rem .5rem .35rem .75rem;border:1px dashed var(--sx-color-border);border-radius:.6rem;font-size:.92em}
+.sx-ai-queue-label{color:var(--sx-color-text-muted,inherit)}
+#sx-ai-queueText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:700px){.sx-ai-queue .sx-ai-iconbtn span{display:none}}

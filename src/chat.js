@@ -288,11 +288,33 @@ function renderPending(){
 }
 function renderRun(){
  const working=active(run);
- el("job").textContent=pending?"Требуется ваше подтверждение":working&&run.cancelRequested?"Останавливаю…":"";
+ const step=live?.lastElementChild?.textContent;
+ el("job").textContent=pending?"Требуется ваше подтверждение":working?(run.cancelRequested?"Останавливаю…":step||"Работаю…"):"";
  el("job").classList.toggle("sx-ai-working",working);
- el("stop").hidden=!working || run.cancelRequested;
- panel.querySelector(".sx-ai-composer form button[type=submit]").disabled=working;
+ el("send").hidden=working;
+ el("stop").hidden=!working;
+ el("stop").disabled=!!run?.cancelRequested;
+ const editor=panel.querySelector("[data-sx-rte-editor]");
+ if(editor)editor.dataset.placeholder=working?"Следующее сообщение встанет в очередь…":"Напишите сообщение…";
+ renderQueue();
 }
+// One queued message, as in the desktop app: it is sent when the current run ends.
+let queued=null;
+function renderQueue(){
+ el("queue").hidden=!queued;
+ el("queueText").textContent=queued?(queued.message||"Прикреплённые файлы: "+queued.uploads.length):"";
+}
+function flushQueue(){
+ if(!queued || active(run) || pending || busy)return;
+ const next=queued;queued=null;renderQueue();
+ sendMessage(next.message,next.uploads);
+}
+el("queueCancel").onclick=()=>{
+ if(!queued)return;
+ const editor=panel.querySelector("[data-sx-rte-editor]");
+ if(!editor.innerText.trim())editor.textContent=queued.message;
+ queued=null;renderQueue();editor.focus();
+};
 // The answer appears progressively, keeping links and formatting.
 function typeIn(node){
  if(document.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches)return;
@@ -320,6 +342,9 @@ function render(data){
  picker.replaceChildren(...engines.map(id=>new Option(id==="codex"?"Codex":"Claude",id)));
  picker.value=engines.includes(previous)?previous:(data.engine||engines[0]||"");
  el("engineLabel").hidden=engines.length<2 || !!data.chatId;
+ const engineNames={"codex":"Codex","claude-vclaude":"Claude · VClaude","claude-personal":"Claude"};
+ el("engineName").hidden=!data.chatId;
+ el("engineName").textContent=engineNames[data.engine]||data.engine||"";
  const scroll=el("scroll");
  const follow=chatId!==data.chatId || scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80;
  if(chatId!==data.chatId)seenAnswer=0;
@@ -399,7 +424,7 @@ function poll(){
    run=data.run;
    if(data.events.length){lastEventId=data.events.at(-1).id;renderActivity(data.events.filter(e=>e.run===run?.id),false);}
    renderRun();
-   if(finished){await open({chat:expected});return;}
+   if(finished){await open({chat:expected});flushQueue();return;}
    if(active(run))poll();
   }catch{el("job").textContent="Не удалось обновить ход работы. Повторяю…";pollTimer=setTimeout(poll,3000);}
  },1000);
@@ -465,6 +490,7 @@ function showSide(open,remember){
 }
 let sidePref=null;try{sidePref=localStorage.getItem("sx-ai-side");}catch{}
 showSide(sidePref===null?wide.matches:sidePref==="1" && wide.matches,false);
+wide.addEventListener("change",e=>{if(!e.matches)showSide(false,false);});
 el("toggleSide").onclick=()=>showSide(!panel.classList.contains("sx-ai-side-open"),wide.matches);
 el("closeSide").onclick=()=>{showSide(false,wide.matches);el("toggleSide").focus();};
 let revision;
@@ -492,10 +518,43 @@ panel.querySelector("form").onsubmit=async e=>{
  if (uploads.length>4) {el("status").textContent="Можно приложить до четырёх файлов.";return;}
  const message=panel.querySelector("[data-sx-rte-editor]").innerText.trim();
  if (message.length>1800){el("status").textContent="Максимальная длина сообщения — 1800 символов.";return;}
- if (uploads.length || message) await sendMessage(message,uploads);
+ if (!uploads.length && !message)return;
+ if (active(run) || pending){
+  if(queued){el("status").textContent="В очереди уже есть сообщение. Уберите его или дождитесь ответа.";return;}
+  queued={message,uploads};
+  panel.querySelector("[data-sx-rte-editor]").replaceChildren();el("message").value="";panel.querySelector("[data-sx-attach-list]").replaceChildren();
+  renderQueue();return;
+ }
+ await sendMessage(message,uploads);
 };
+// Enter sends, Shift+Enter breaks the line.
+panel.querySelector("[data-sx-rte-editor]").addEventListener("keydown",e=>{
+ if(e.key!=="Enter" || e.shiftKey || e.isComposing)return;
+ e.preventDefault();e.stopPropagation();
+ panel.querySelector(".sx-ai-box").requestSubmit();
+},true);
+// Voice input through the browser's speech recognition (Chrome sends the audio to its own service).
+const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(Recognition){
+ const mic=el("mic");mic.hidden=false;
+ let recognizer=null;
+ mic.onclick=()=>{
+  if(recognizer){recognizer.stop();return;}
+  const editor=panel.querySelector("[data-sx-rte-editor]");
+  const base=editor.innerText.trim();
+  recognizer=new Recognition();recognizer.lang="ru-RU";recognizer.interimResults=true;recognizer.continuous=true;
+  recognizer.onresult=e=>{
+   let text="";for(const r of e.results)text+=r[0].transcript;
+   editor.textContent=(base?base+" ":"")+text.trim();
+  };
+  recognizer.onerror=e=>{el("status").textContent=e.error==="not-allowed"?"Нет доступа к микрофону.":"Голосовой ввод недоступен.";};
+  recognizer.onend=()=>{recognizer=null;mic.setAttribute("aria-pressed","false");mic.classList.remove("is-on");editor.focus();};
+  mic.setAttribute("aria-pressed","true");mic.classList.add("is-on");
+  try{recognizer.start();}catch{recognizer=null;}
+ };
+}
 el("confirm").onclick=()=>action(async()=>{run=await call("confirm",{chatId,id:pending.id});await open({chat:chatId});});
-el("reject").onclick=()=>action(async()=>{await call("reject",{chatId,id:pending.id});await open({chat:chatId});});
+el("reject").onclick=()=>action(async()=>{await call("reject",{chatId,id:pending.id});await open({chat:chatId});}).then(flushQueue);
 el("stop").onclick=()=>action(async()=>{
  run=await call("cancel",{chatId,runId:run.id});
  if(active(run)){renderRun();poll();}else await open({chat:chatId});

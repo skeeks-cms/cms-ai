@@ -19,24 +19,34 @@ $icon = static function (string $path): string {
 <button type="button" class="sx-ai-navrow" id="sx-ai-newChat"><?= $icon('M12 5v14M5 12h14') ?>Новый чат</button>
 <button type="button" class="sx-ai-navrow" id="sx-ai-searchToggle" aria-expanded="false" aria-controls="sx-ai-search"><?= $icon('M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4.2-4.2') ?>Поиск</button>
 <input class="form-control" type="search" id="sx-ai-search" maxlength="200" placeholder="Название или текст сообщения" aria-label="Поиск по названиям и сообщениям" hidden>
-<label id="sx-ai-engineLabel" hidden>Движок нового чата<select class="form-control" id="sx-ai-engine"></select></label>
 <div id="sx-ai-listStatus" role="status"></div>
 <div id="sx-ai-chats"></div>
 </nav>
-<section class="sx-ai-conversation" aria-label="Переписка"><div id="sx-ai-scroll"><h2 id="sx-ai-title"></h2><p id="sx-ai-context"></p><section id="sx-ai-messages" aria-live="polite"></section><aside hidden id="sx-ai-preview" class="sx-ai-pending"><strong>Действие в CRM</strong><div class="sx-ai-pending-body"></div><div class="sx-ai-actions"><button type="button" class="sx-button sx-button--primary" id="sx-ai-confirm">Подтвердить</button><button type="button" class="sx-button sx-button--secondary" id="sx-ai-reject">Отклонить</button></div></aside></div><div class="sx-ai-composer"><div class="sx-ai-jobline"><p id="sx-ai-job" role="status"></p><button type="button" class="sx-button sx-button--secondary sx-button--sm" id="sx-ai-stop" hidden>Остановить</button></div><form>
+<section class="sx-ai-conversation" aria-label="Переписка"><div id="sx-ai-scroll"><h2 id="sx-ai-title"></h2><p id="sx-ai-context"></p><section id="sx-ai-messages" aria-live="polite"></section><aside hidden id="sx-ai-preview" class="sx-ai-pending"><strong>Действие в CRM</strong><div class="sx-ai-pending-body"></div><div class="sx-ai-actions"><button type="button" class="sx-button sx-button--primary" id="sx-ai-confirm">Подтвердить</button><button type="button" class="sx-button sx-button--secondary" id="sx-ai-reject">Отклонить</button></div></aside></div><div class="sx-ai-composer">
+<div id="sx-ai-queue" class="sx-ai-queue" hidden><span class="sx-ai-queue-label">В очереди:</span> <span id="sx-ai-queueText"></span><button type="button" class="sx-ai-iconbtn" id="sx-ai-queueCancel" title="Убрать из очереди"><?= $icon('M6 6l12 12M18 6L6 18') ?><span>Убрать</span></button></div>
+<form class="sx-ai-box">
+<?= AttachmentsInputWidget::widget(['name' => 'uploads', 'maxSize' => 4194304, 'options' => ['id' => 'sx-ai-files']]) ?>
+<div class="sx-ai-box-row">
+<button type="button" class="sx-ai-round" data-sx-attach-open="sx-ai-files" title="Прикрепить файлы: до 4, вместе до 4 МБ. Можно перетащить или вставить из буфера" aria-label="Прикрепить файлы"><?= $icon('M12 5v14M5 12h14') ?></button>
 <?= RichTextInputWidget::widget([
     'name' => 'message', 'options' => ['id' => 'sx-ai-message'],
-    'preset' => 'basic', 'tools' => [], 'paragraph' => 'div', 'minHeight' => 72,
+    'preset' => 'basic', 'tools' => [], 'paragraph' => 'div', 'minHeight' => 24,
     'placeholder' => 'Напишите сообщение…', 'attachLabel' => 'Прикрепить файлом',
     'uploadUrl' => null,
 ]) ?>
-<?= AttachmentsInputWidget::widget(['name' => 'uploads', 'maxSize' => 4194304, 'options' => ['id' => 'sx-ai-files']]) ?>
-<div class="sx-comment-actions">
-<button type="submit" class="sx-button sx-button--primary">Отправить</button>
-<?= AttachmentsInputWidget::button(['for' => 'sx-ai-files']) ?>
+<button type="button" class="sx-ai-round" id="sx-ai-mic" hidden title="Голосовой ввод" aria-label="Голосовой ввод" aria-pressed="false"><?= $icon('M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3M5 11a7 7 0 0 0 14 0M12 18v3') ?></button>
+<button type="submit" class="sx-ai-send" id="sx-ai-send" aria-label="Отправить" title="Отправить (Enter)"><?= $icon('M12 19V5M6 11l6-6 6 6') ?></button>
+<button type="button" class="sx-ai-send is-stop" id="sx-ai-stop" hidden aria-label="Остановить" title="Остановить поручение"><svg class="sx-ai-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg></button>
 </div>
-<small>До 4 файлов, вместе до 4 МБ</small>
-</form><p id="sx-ai-status" role="status"></p></div></section>
+</form>
+<div class="sx-ai-box-meta">
+<label id="sx-ai-engineLabel" class="sx-ai-chip" title="Движок нового чата"><span class="sx-ai-visually-hidden">Движок нового чата</span><select id="sx-ai-engine"></select></label>
+<span id="sx-ai-engineName" class="sx-ai-chip" hidden></span>
+<span class="sx-ai-spacer"></span>
+<p id="sx-ai-job" role="status"></p>
+</div>
+<p id="sx-ai-status" role="status"></p>
+</div></section>
 <div id="sx-ai-side" class="sx-ai-side" role="complementary" aria-label="Панель чата">
 <div class="sx-ai-side-head"><strong>Панель чата</strong><button type="button" class="sx-ai-iconbtn" id="sx-ai-closeSide" title="Скрыть панель"><?= $icon('M6 6l12 12M18 6L6 18') ?><span>Скрыть</span></button></div>
 <details class="sx-ai-side-section" id="sx-ai-sideProject" open><summary>Проект чата</summary>
