@@ -230,7 +230,7 @@ function appendLinks(target,value){
 }
 // Steps of the active run inside the conversation, like a desktop agent: the current
 // step spins, finished steps get a check mark. Finished runs keep a collapsed list.
-const stepTypes=new Set(["queued","started","thinking","tool","step","cancel"]);
+const stepTypes=new Set(["queued","started","thinking","tool","step","cancel","steer"]);
 const stepText={queued:"В очереди",started:"Начинаю работу"};
 let live=null;
 function liveList(){
@@ -314,6 +314,7 @@ function renderRun(){
 let queued=null;
 function renderQueue(){
  el("queue").hidden=!queued;
+ el("queueSend").hidden=!queued || !!queued.uploads.length || !active(run) || !!run?.cancelRequested;
  el("queueText").textContent=queued?(queued.message||"Прикреплённые файлы: "+queued.uploads.length):"";
 }
 function flushQueue(){
@@ -321,6 +322,15 @@ function flushQueue(){
  const next=queued;queued=null;renderQueue();
  sendMessage(next.message,next.uploads);
 }
+// Send the queued message into the working run: the agent takes it into account at its next step.
+el("queueSend").onclick=()=>{
+ if(!queued || !active(run))return;
+ const next=queued;
+ action(async()=>{
+  try{await call("steer",{chatId,runId:run.id,message:next.message});queued=null;renderQueue();await open({chat:chatId});}
+  catch(e){renderQueue();throw e;}
+ });
+};
 el("queueCancel").onclick=()=>{
  if(!queued)return;
  const editor=panel.querySelector("[data-sx-rte-editor]");
