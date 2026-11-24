@@ -92,6 +92,8 @@ final class ChatStoreController extends BearerAuthenticatedController
                     $sessions['codex'] = $chat['thread_id'];
                 }
                 $chat['engine_sessions'] = (object)$sessions;
+                $chat['catalog_revs'] = (object)(new Query())->from(self::SESSION)->where(['chat_id' => $chat['id']])
+                    ->andWhere(['not', ['catalog_rev' => null]])->select(['catalog_rev', 'engine'])->indexBy('engine')->column();
                 $chat['pending'] = json_decode($chat['pending'] ?? 'null', true);
                 $chat['history'] = (new Query())->from(self::MESSAGE)->where(['chat_id'=>$chat['id']])
                     ->select(['id','role','text'])->orderBy('id')->all();
@@ -100,6 +102,15 @@ final class ChatStoreController extends BearerAuthenticatedController
                     ->select(['r.id','r.status','r.job_type','d.done'])->where(['d.chat_id'=>$chat['id']])->orderBy(['r.id'=>SORT_DESC])->one() ?: null;
                 $chat['files'] = $attachments->select(['a.id','a.name','a.size','a.message_id'])->orderBy('a.id')->all();
                 return $chat;
+            }
+            if ($op === 'catalogSeen') {
+                $rev = (string)($data['rev'] ?? '');
+                if (!preg_match('/^[a-f0-9]{32}$/D', $rev)) {
+                    throw new BadRequestHttpException();
+                }
+                $db->createCommand()->update(self::SESSION, ['catalog_rev' => $rev],
+                    ['chat_id' => $chat['id'], 'engine' => (string)($data['engine'] ?? '')])->execute();
+                return ['ok' => true];
             }
             $changes = ['updated_at' => time()];
             if ($op === 'bindEngine' || $op === 'thread') {

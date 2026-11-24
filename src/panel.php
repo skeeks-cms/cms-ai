@@ -58,6 +58,7 @@ $icon = static function (string $path): string {
 <details class="sx-ai-side-section" id="sx-ai-folder"><summary>Файлы проекта</summary>
 <ul></ul><p role="status"></p>
 </details>
+<details class="sx-ai-side-section" id="sx-ai-ctx" open><summary>Контекст</summary><div class="sx-ai-context-body"><p class="sx-ai-note">Появится после первого ответа в чате.</p></div></details>
 <details class="sx-ai-side-section" id="sx-ai-usage"><summary>Расход</summary><div class="sx-ai-usage-body"><p class="sx-ai-note">Загружаю…</p></div></details>
 <details class="sx-ai-side-section" id="sx-ai-project"><summary>Память и навыки сайта</summary>
 <label>Особенности сайта<textarea class="form-control" id="sx-ai-rules" maxlength="12000" rows="5"></textarea></label>

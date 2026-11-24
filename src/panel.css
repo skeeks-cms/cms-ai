@@ -183,3 +183,14 @@ html.sx-ai-open,html.sx-ai-open body{overflow:hidden!important}
 .sx-ai-usage-table td{padding:.2rem 0;border-bottom:1px solid var(--sx-color-border);vertical-align:top}
 .sx-ai-usage-table td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-inline-end:.5rem}
 .sx-ai-usage-table td:last-child{text-align:end;white-space:nowrap;width:45%;color:var(--sx-color-text-muted,inherit)}
+/* "Контекст" in the side panel, like the context panel of a desktop agent. */
+.sx-ai-context-head{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;margin:.3rem 0}
+.sx-ai-context-head span{color:var(--sx-color-text-muted,inherit);font-size:.92em}
+.sx-ai-context-bar{display:flex;height:.4rem;border-radius:1rem;overflow:hidden;background:var(--sx-color-surface-hover);margin:.2rem 0 .6rem}
+.sx-ai-context-bar span{display:block;height:100%}
+.sx-ai-context-table{width:100%;border-collapse:collapse;font-size:.9em;table-layout:fixed}
+.sx-ai-context-table td{padding:.22rem 0}
+.sx-ai-context-table td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sx-ai-context-table td:nth-child(2){width:28%;text-align:end;white-space:nowrap}
+.sx-ai-context-table td:last-child{width:18%;text-align:end;color:var(--sx-color-text-muted,inherit)}
+.sx-ai-context-table i{display:inline-block;width:.6rem;height:.6rem;border-radius:.15rem;margin-inline-end:.45rem;vertical-align:-.02em}

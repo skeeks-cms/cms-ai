@@ -264,7 +264,7 @@ const fmt={
 function doneSteps(texts,stat){
  const box=document.createElement("details");box.className="sx-ai-steps-done";
  const summary=document.createElement("summary");
- summary.textContent=["Ход работы · шагов: "+texts.length,...(stat?[stat.seconds?fmt.seconds(stat.seconds):"",stat.tokens?fmt.tokens(stat.tokens)+" токенов":"",fmt.usd(stat.cost)]:[])].filter(Boolean).join(" · ");
+ summary.textContent=["Ход работы · шагов: "+texts.length,...(stat?[stat.seconds?fmt.seconds(stat.seconds):"",stat.tokens?fmt.tokens(stat.tokens)+" токенов"+(stat.cached?" (из кеша "+fmt.tokens(stat.cached)+")":""):"",fmt.usd(stat.cost)]:[])].filter(Boolean).join(" · ");
  if(stat?.model)summary.title="Модель: "+stat.model;
  const list=document.createElement("ol");list.className="sx-ai-steps";
  for(const t of texts){const li=document.createElement("li");li.className="is-done";li.textContent=t;list.append(li);}
@@ -444,6 +444,7 @@ function render(data){
  pending=data.pending;
  run=data.run;lastEventId=data.lastEventId||0;
  renderPending();
+ renderContext(data.context);
  renderActivity(data.events||[],true);
  renderRun();
  if(follow)scroll.scrollTop=scroll.scrollHeight;
@@ -546,6 +547,35 @@ wide.addEventListener("change",e=>{if(!e.matches)showSide(false,false);});
 el("toggleSide").onclick=()=>showSide(!panel.classList.contains("sx-ai-side-open"),wide.matches);
 // Return focus only after a keyboard close: a programmatic focus after typing would draw a stray ring.
 el("closeSide").onclick=e=>{showSide(false,wide.matches);if(e.detail===0)el("toggleSide").focus();else panel.querySelector("[data-sx-rte-editor]")?.focus({preventScroll:true});};
+// Side panel "Контекст": fill of the engine context after the last run and what it consists of.
+const contextColors={rules:"#d97757",catalog:"#5b8def",skills:"#a77bdc",attachments:"#e0a03c",conversation:"#3fa37a",tools:"#c45c8a",engine:"#8a8f98"};
+function renderContext(c){
+ const body=el("ctx").querySelector(".sx-ai-context-body");
+ if(!c){body.replaceChildren(Object.assign(document.createElement("p"),{className:"sx-ai-note",textContent:chatId?"Появится после следующего ответа.":"Появится после первого ответа в чате."}));return;}
+ const head=document.createElement("div");head.className="sx-ai-context-head";
+ const pct=c.window?Math.min(100,Math.round(c.used/c.window*100)):null;
+ head.innerHTML="";
+ const left=document.createElement("strong");left.textContent=pct!==null?pct+"% занято":"Занято";
+ const right=document.createElement("span");right.textContent=fmt.tokens(c.used)+(c.window?" / "+fmt.tokens(c.window):"");
+ head.append(left,right);
+ const bar=document.createElement("div");bar.className="sx-ai-context-bar";
+ const total=c.window||c.used||1;
+ for(const p of c.parts){const seg=document.createElement("span");seg.style.width=(p.tokens/total*100)+"%";seg.style.background=contextColors[p.key]||"#888";seg.title=p.title;bar.append(seg);}
+ const list=document.createElement("table");list.className="sx-ai-context-table";
+ for(const p of c.parts){
+  const tr=document.createElement("tr"),name=document.createElement("td"),val=document.createElement("td"),share=document.createElement("td");
+  const dot=document.createElement("i");dot.style.background=contextColors[p.key]||"#888";name.append(dot,document.createTextNode(p.title));
+  val.textContent="≈ "+fmt.tokens(p.tokens);share.textContent=c.used?(p.tokens/c.used*100).toLocaleString("ru-RU",{maximumFractionDigits:1})+"%":"";
+  tr.append(name,val,share);list.append(tr);
+ }
+ const notes=[];
+ if(c.cached)notes.push("Из кеша "+fmt.tokens(c.cached)+" ("+Math.round(c.cached/c.used*100)+"%).");
+ if(c.compactAt)notes.push(c.used<c.compactAt?"До сжатия истории ≈ "+fmt.tokens(c.compactAt-c.used)+".":"Движок сжимает историю.");
+ if(c.model)notes.push("Модель: "+c.model+".");
+ notes.push("Объём — по данным движка на последнем обращении; разбивка — оценка по объёму текста.");
+ const note=document.createElement("p");note.className="sx-ai-note";note.textContent=notes.join(" ");
+ body.replaceChildren(head,bar,list,note);
+}
 // Side panel "Расход": tokens of this chat, mine for the month and, for administrators, the account.
 const usageBox=el("usage");
 function usageTable(title,rows,label){
@@ -556,7 +586,7 @@ function usageTable(title,rows,label){
  for(const r of rows){
   const tr=document.createElement("tr"),name=document.createElement("td"),val=document.createElement("td");
   name.textContent=label(r);name.title=name.textContent;
-  val.textContent=fmt.tokens(r.input+r.output)+(r.cost!==null && r.cost!==undefined?" · "+fmt.usd(r.cost):"");
+  val.textContent=fmt.tokens(r.input+r.output)+(r.cached?" (кеш "+fmt.tokens(r.cached)+")":"")+(r.cost!==null && r.cost!==undefined?" · "+fmt.usd(r.cost):"");
   tr.append(name,val);table.append(tr);
  }
  wrap.append(table);return wrap;
@@ -577,7 +607,7 @@ async function refreshUsage(){
   const r=await fetch(endpoint("usage",{chat:chatId}));const d=await r.json();
   if(!r.ok)throw Error(d.error||"Не удалось загрузить расход.");
   const note=document.createElement("p");note.className="sx-ai-note";
-  note.textContent="Токены — по данным движков. Сумма в долларах — ориентир по официальным ценам API, не счёт.";
+  note.textContent="Токены — по данным движков. Токены из кеша по ценам API в разы дешевле обычных. Сумма в долларах — ориентир по официальным ценам API, не счёт.";
   body.replaceChildren(...[
    chatId?usageTotal("Этот чат",d.chat):null,
    usageTotal("Мои поручения за "+d.month,d.mine),
