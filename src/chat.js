@@ -564,7 +564,7 @@ document.addEventListener("click",event=>{
  const trigger=event.target.closest("[data-sx-ai-open]");
  if(!trigger)return;
  const company=trigger.dataset.sxAiCompany || document.querySelector("[data-sx-ai-company]")?.dataset.sxAiCompany || "";
- if(!panel.open){panel.showModal();panel.getBoundingClientRect();panel.classList.add("is-shown");panel.querySelector("[data-sx-rte-editor]")?.focus({preventScroll:true});}
+ if(!panel.open){document.documentElement.classList.add("sx-ai-open");panel.showModal();panel.getBoundingClientRect();panel.classList.add("is-shown");panel.querySelector("[data-sx-rte-editor]")?.focus({preventScroll:true});}
  if(company===context && current){
    if(chatId)open({chat:chatId}).catch(e=>el("status").textContent=e.message);
    return;
@@ -573,7 +573,7 @@ document.addEventListener("click",event=>{
  el("status").textContent="Открываю переписку…";
  open({company}).then(()=>el("status").textContent="").catch(e=>el("status").textContent=e.message);
 });
-panel.addEventListener("close",stopPolling);
+panel.addEventListener("close",()=>{stopPolling();document.documentElement.classList.remove("sx-ai-open");});
 // Close with the same slide; Esc goes through the same path.
 let closing=null;
 function closePanel(){
@@ -589,4 +589,14 @@ function closePanel(){
 // "cancel" also bubbles from a file input when the picker is dismissed; only Esc on the dialog closes it.
 panel.addEventListener("cancel",e=>{if(e.target!==panel)return;e.preventDefault();if(!menu)closePanel();});
 panel.querySelector("[data-sx-ai-close]").onclick=closePanel;
+// Files can be dropped anywhere on the conversation ([data-sx-attach-zone] of the attachments widget).
+const conversation=panel.querySelector(".sx-ai-conversation");
+let dragDepth=0;
+const dragsFiles=e=>Array.prototype.includes.call(e.dataTransfer?.types||[],"Files");
+const setDragging=on=>{if(!on)dragDepth=0;conversation.classList.toggle("is-dragging-files",on);};
+conversation.addEventListener("dragenter",e=>{if(!dragsFiles(e))return;dragDepth++;setDragging(true);});
+conversation.addEventListener("dragleave",e=>{if(!dragsFiles(e))return;if(--dragDepth<=0)setDragging(false);});
+conversation.addEventListener("drop",()=>setDragging(false));
+document.addEventListener("dragend",()=>setDragging(false));
+window.addEventListener("blur",()=>setDragging(false));
 })();

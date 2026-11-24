@@ -154,3 +154,13 @@
 /* Focus ring only for keyboard users; admin-wide :focus styles must not leave rings after a click. */
 .sx-ai-panel :is(button,a,select,summary,input,[tabindex]):focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
 .sx-ai-panel :is(button,a,select,summary):focus-visible{outline:2px solid var(--sx-color-accent,currentColor);outline-offset:-2px;box-shadow:none}
+/* Drop zone over the whole conversation while files are dragged. */
+.sx-ai-conversation{position:relative}
+.sx-ai-dropzone{position:absolute;inset:.5rem;z-index:4;display:none;align-items:center;justify-content:center;border:2px dashed var(--sx-color-accent,currentColor);border-radius:1rem;background:color-mix(in srgb,var(--sx-color-surface) 86%,transparent);pointer-events:none;text-align:center}
+.sx-ai-dropzone>div{display:flex;flex-direction:column;align-items:center;gap:.35rem}
+.sx-ai-dropzone .sx-ai-icon{width:2rem;height:2rem;color:var(--sx-color-accent,currentColor)}
+.sx-ai-dropzone span{font-size:.9em;color:var(--sx-color-text-muted,inherit)}
+.sx-ai-conversation.is-dragging-files .sx-ai-dropzone{display:flex;animation:sx-ai-step-in .15s ease-out both}
+.sx-ai-box .sx-rte__drop{display:none!important}
+/* The page under the open window does not scroll and shows no scrollbar. */
+html.sx-ai-open,html.sx-ai-open body{overflow:hidden!important}
