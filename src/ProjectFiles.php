@@ -2,16 +2,13 @@
 
 namespace skeeks\cms\ai;
 
+use skeeks\cms\ai\service\ProjectFileStore;
 use skeeks\cms\mcp\tools\CallbackTool;
 use Yii;
-use yii\db\Query;
-use yii\helpers\FileHelper;
 use yii\web\BadRequestHttpException;
-use yii\web\ConflictHttpException;
 use yii\web\ForbiddenHttpException;
-use yii\web\NotFoundHttpException;
 
-/** Immutable blobs; atomic replacement of the index publishes a whole batch. */
+/** Shared project files of the site: rights and agent tools here, storage in the central service (ProjectFileStore). */
 final class ProjectFiles
 {
     public static function tools(): array
@@ -51,51 +48,40 @@ final class ProjectFiles
             && (!$write || $user->can('cms/admin-tree/update',$params,false));
     }
 
-    private static function root(bool $write = false): string
+    /** Project of the current site in the central service (the pilot keys projects by site). */
+    private static function site(bool $write = false): int
     {
         if (!self::allowed($write)) {
             throw new ForbiddenHttpException('Недостаточно прав на файлы этого сайта.');
         }
-        return Yii::getAlias('@root/console/runtime/cms-ai/projects/').(int)Yii::$app->skeeks->site->id;
+        return (int)Yii::$app->skeeks->site->id;
     }
 
-    private static function index(string $root): array
+    private static function user(): ?int
     {
-        return is_file($root.'/index.json') ? json_decode(file_get_contents($root.'/index.json'),true,64,JSON_THROW_ON_ERROR) : [];
-    }
-
-    private static function path($value): string
-    {
-        if (!is_string($value) || strlen($value)>255 || !preg_match('~^[\pL\pN_-][\pL\pN_. -]*(?:/[\pL\pN_-][\pL\pN_. -]*)*$~uD',$value)) {
-            throw new BadRequestHttpException('Некорректный путь файла проекта.');
-        }
-        return $value;
+        return Yii::$app->user->isGuest ? null : (int)Yii::$app->user->id;
     }
 
     public static function listing(array $args): array
     {
-        $index = self::index(self::root());
-        ksort($index,SORT_STRING);
-        $items = [];
-        $offset = max(0,(int)($args['offset'] ?? 0));
-        foreach (array_slice($index,$offset,10,true) as $path=>$meta) {
-            $items[] = ['path'=>(string)$path]+$meta;
-        }
-        return ['files'=>$items,'total'=>count($index),'next_offset'=>$offset+count($items)<count($index)?$offset+count($items):null];
+        return ProjectFileStore::files(self::site(), max(0,(int)($args['offset'] ?? 0)));
     }
 
+    /** All files and folders, for the file manager. */
+    public static function all(): array
+    {
+        return ['items'=>ProjectFileStore::all(self::site())];
+    }
+
+    /** [content, meta] of a file. */
     public static function source(string $path): array
     {
-        $root = self::root();
-        $meta = self::index($root)[self::path($path)] ?? null;
-        if (!$meta) { throw new NotFoundHttpException('Файл проекта не найден.'); }
-        return [$root.'/blobs/'.$meta['revision'],$meta];
+        return ProjectFileStore::get(self::site(), $path);
     }
 
     public static function read(array $args): array
     {
-        [$file,$meta] = self::source($args['path']);
-        $data = file_get_contents($file);
+        [$data,$meta] = self::source((string)($args['path'] ?? ''));
         if (!mb_check_encoding($data,'UTF-8') || strpos($data,"\0")!==false) {
             $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($data);
             if (in_array($mime,['image/png','image/jpeg','image/webp'],true)) {
@@ -109,76 +95,47 @@ final class ProjectFiles
         return ['path'=>$args['path'],'revision'=>$meta['revision'],'text'=>$text,'next_offset'=>$next<mb_strlen($data)?$next:null];
     }
 
-    private static function bytes(array $file): string
-    {
-        if (array_key_exists('text',$file) === array_key_exists('attachment_id',$file)) {
-            throw new BadRequestHttpException('Нужен текст или вложение.');
-        }
-        if (isset($file['attachment_id'])) {
-            $chat = (int)Yii::$app->request->headers->get('X-Skeeks-AI-Chat');
-            $data = (new Query())->from(['a'=>'{{%cms_ai_attachment}}'])
-                ->innerJoin(['m'=>'{{%cms_ai_chat_message}}'],'m.id=a.message_id')
-                ->innerJoin(['c'=>'{{%cms_ai_chat}}'],'c.id=m.chat_id')
-                ->where(['a.id'=>$file['attachment_id'],'c.id'=>$chat,'c.site_id'=>Yii::$app->skeeks->site->id,'c.owner_id'=>Yii::$app->user->id])
-                ->select('a.content')->scalar();
-            if ($data===false) { throw new NotFoundHttpException('Вложение не найдено в вашем чате.'); }
-            return $data;
-        }
-        if (!is_string($file['text'] ?? null) || strlen($file['text'])>4194304) { throw new BadRequestHttpException('Нужен текст файла.'); }
-        return $file['text'];
-    }
-
-    private static function atomicWrite(string $target,string $data): void
-    {
-        $temp = tempnam(dirname($target),'.write-');
-        if (!$temp) { throw new \RuntimeException('Не удалось создать временный файл.'); }
-        try {
-            if (file_put_contents($temp,$data)!==strlen($data) || !rename($temp,$target)) {
-                throw new \RuntimeException('Файл проекта не сохранён.');
-            }
-        } finally {
-            if (is_file($temp)) { unlink($temp); }
-        }
-    }
-
     public static function save(array $args): array
     {
-        $root = self::root(true);
-        $files = $args['files'] ?? [];
-        if (!is_array($files) || !$files || count($files)>16) { throw new BadRequestHttpException('Укажите от 1 до 16 файлов.'); }
-        FileHelper::createDirectory($root.'/blobs',0700);
-        $lock = fopen($root.'/.lock','c');
-        if (!$lock) { throw new \RuntimeException('Папка проекта недоступна.'); }
-        try {
-            if (!flock($lock,LOCK_EX)) { throw new \RuntimeException('Не удалось заблокировать папку проекта.'); }
-            $index = self::index($root);
-            $changed = [];
-            $blobs = [];
-            foreach ($files as $file) {
-                $path = self::path($file['path'] ?? null);
-                if (isset($changed[$path])) { throw new BadRequestHttpException('Путь повторяется.'); }
-                $data = self::bytes($file);
-                $revision = hash('sha256',$data);
-                $current = $index[$path]['revision'] ?? '';
-                if ($current!==$revision && $current!==($file['revision'] ?? '')) {
-                    throw new ConflictHttpException('Версия файла изменилась: '.$path);
-                }
-                foreach (array_keys($index) as $existing) {
-                    if (str_starts_with((string)$existing,$path.'/') || str_starts_with($path,$existing.'/')) {
-                        throw new ConflictHttpException('Путь файла занят каталогом или родительским файлом.');
-                    }
-                }
-                if (!is_file($root.'/blobs/'.$revision)) { $blobs[$revision] = $data; }
-                $index[$path] = ['revision'=>$revision,'size'=>strlen($data)];
-                $changed[$path] = $revision;
+        $site = self::site(true);
+        $files = $args['files'] ?? null;
+        if (!is_array($files)) { throw new BadRequestHttpException('Укажите от 1 до 16 файлов.'); }
+        $prepared = [];
+        foreach ($files as $file) {
+            if (!is_array($file) || array_key_exists('text',$file) === array_key_exists('attachment_id',$file)) {
+                throw new BadRequestHttpException('Нужен текст или вложение.');
             }
-            foreach ($blobs as $revision=>$data) {
-                self::atomicWrite($root.'/blobs/'.$revision,$data);
+            if (isset($file['attachment_id'])) {
+                $chat = (int)Yii::$app->request->headers->get('X-Skeeks-AI-Chat');
+                $data = ProjectFileStore::attachment($site,(int)self::user(),$chat,(int)$file['attachment_id']);
+            } elseif (is_string($file['text'] ?? null)) {
+                $data = $file['text'];
+            } else {
+                throw new BadRequestHttpException('Нужен текст файла.');
             }
-            self::atomicWrite($root.'/index.json',json_encode((object)$index,JSON_THROW_ON_ERROR));
-            return ['saved'=>array_keys($changed)];
-        } finally {
-            fclose($lock);
+            $prepared[] = ['path'=>$file['path'] ?? null,'revision'=>(string)($file['revision'] ?? ''),'data'=>$data];
         }
+        return ['saved'=>ProjectFileStore::save($site,self::user(),$prepared)['saved']];
+    }
+
+    /** A file uploaded in the file manager; $revision is the replaced file's revision or '' for a new one. */
+    public static function upload(string $path, string $revision, string $data): array
+    {
+        return ProjectFileStore::save(self::site(true),self::user(),[['path'=>$path,'revision'=>$revision,'data'=>$data]]);
+    }
+
+    public static function folder(string $path): array
+    {
+        return ProjectFileStore::folder(self::site(true),self::user(),$path);
+    }
+
+    public static function delete(array $items): array
+    {
+        return ProjectFileStore::delete(self::site(true),self::user(),$items);
+    }
+
+    public static function move(string $from, string $to): array
+    {
+        return ProjectFileStore::move(self::site(true),self::user(),$from,$to);
     }
 }

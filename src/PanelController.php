@@ -46,11 +46,45 @@ final class PanelController extends Controller
         return ProjectFiles::save($args);
     }
 
+    /** File manager: all files and folders of the project. */
+    public function actionProjectTree()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        return ProjectFiles::all();
+    }
+
+    /** File manager: an uploaded file (multipart "file", "path", "revision" of the replaced file or empty). */
+    public function actionProjectUpload()
+    {
+        if (!Yii::$app->request->isPost) { throw new HttpException(405); }
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        $file = \yii\web\UploadedFile::getInstanceByName('file');
+        if (!$file || $file->error !== UPLOAD_ERR_OK) { throw new BadRequestHttpException('Файл не получен.'); }
+        if ($file->size > \skeeks\cms\ai\service\ProjectFileStore::MAX_SIZE) { throw new BadRequestHttpException('Файл больше 4 МБ.'); }
+        $request = Yii::$app->request;
+        return ProjectFiles::upload((string)$request->post('path'), (string)$request->post('revision', ''), (string)file_get_contents($file->tempName));
+    }
+
+    /** File manager: {op: folder|delete|move, …}. */
+    public function actionProjectChange()
+    {
+        if (!Yii::$app->request->isPost) { throw new HttpException(405); }
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        $args = json_decode(Yii::$app->request->rawBody,true);
+        if (!is_array($args)) { throw new BadRequestHttpException(); }
+        switch ($args['op'] ?? '') {
+            case 'folder': return ProjectFiles::folder((string)($args['path'] ?? ''));
+            case 'delete': return ProjectFiles::delete(is_array($args['items'] ?? null) ? $args['items'] : []);
+            case 'move': return ProjectFiles::move((string)($args['from'] ?? ''), (string)($args['to'] ?? ''));
+        }
+        throw new BadRequestHttpException('Неизвестное действие.');
+    }
+
     public function actionProjectDownload(string $path)
     {
-        [$file] = ProjectFiles::source($path);
+        [$content] = ProjectFiles::source($path);
         Yii::$app->response->headers->set('X-Content-Type-Options','nosniff');
-        return Yii::$app->response->sendFile($file,basename($path),['mimeType'=>'application/octet-stream','inline'=>false]);
+        return Yii::$app->response->sendContentAsFile($content,basename($path),['mimeType'=>'application/octet-stream','inline'=>false]);
     }
 
     public function actionSidebar(string $q = '')
