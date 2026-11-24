@@ -202,13 +202,8 @@ final class PanelController extends Controller
     private function settings(array $data): array
     {
         $project = ProjectKnowledge::settings((int)Yii::$app->skeeks->site->id, $data);
-        $root = Yii::getAlias('@skeeks/cms/ai/service') . '/../knowledge';
-        $global = is_file($root . '/AGENTS.md') ? (string)file_get_contents($root . '/AGENTS.md') : '';
-        $skills = [];
-        foreach (glob($root . '/skills/*/SKILL.md') ?: [] as $file) {
-            $skills[] = 'skeeks/' . basename(dirname($file));
-        }
-        return $project + ['globalRules' => $global, 'globalSkills' => $skills];
+        $shared = \skeeks\cms\ai\service\ProjectRulesStore::shared();
+        return $project + ['globalRules' => $shared['rules'], 'globalSkills' => $shared['skills']];
     }
 
     /** @return array [['name' => string, 'bytes' => string]] */
