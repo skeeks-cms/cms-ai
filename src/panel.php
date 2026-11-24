@@ -1,27 +1,29 @@
 <?php
 use skeeks\cms\widgets\formInputs\attachments\AttachmentsInputWidget;
 use skeeks\cms\widgets\formInputs\richText\RichTextInputWidget;
+
+$icon = static function (string $path): string {
+    return '<svg class="sx-ai-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="' . $path . '"/></svg>';
+};
 ?>
 <dialog class="sx-ai-panel" data-project-write="<?= (int)\skeeks\cms\ai\ProjectFiles::allowed(true) ?>" aria-label="SkeekS AI">
-<header><button type="button" class="sx-button sx-button--secondary" id="sx-ai-toggleChats" aria-expanded="false" aria-controls="sx-ai-sidebar">Чаты</button><strong>SkeekS AI</strong><button type="button" class="sx-button sx-button--secondary" data-sx-ai-close>Закрыть</button></header>
+<header>
+<button type="button" class="sx-ai-iconbtn" id="sx-ai-toggleChats" aria-expanded="false" aria-controls="sx-ai-sidebar" title="Чаты"><?= $icon('M4 6h16M4 12h16M4 18h16') ?><span>Чаты</span></button>
+<strong>SkeekS AI</strong>
+<span class="sx-ai-spacer"></span>
+<button type="button" class="sx-ai-iconbtn" id="sx-ai-toggleSide" aria-expanded="false" aria-controls="sx-ai-side" title="Панель чата"><?= $icon('M4 5h16v14H4zM15 5v14') ?><span>Панель</span></button>
+<button type="button" class="sx-ai-iconbtn" data-sx-ai-close title="Закрыть"><?= $icon('M6 6l12 12M18 6L6 18') ?><span>Закрыть</span></button>
+</header>
 <main>
 <nav id="sx-ai-sidebar" aria-label="Мои чаты">
+<button type="button" class="sx-ai-navrow" id="sx-ai-newChat"><?= $icon('M12 5v14M5 12h14') ?>Новый чат</button>
+<button type="button" class="sx-ai-navrow" id="sx-ai-searchToggle" aria-expanded="false" aria-controls="sx-ai-search"><?= $icon('M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4.2-4.2') ?>Поиск</button>
+<input class="form-control" type="search" id="sx-ai-search" maxlength="200" placeholder="Название или текст сообщения" aria-label="Поиск по названиям и сообщениям" hidden>
 <label id="sx-ai-engineLabel" hidden>Движок нового чата<select class="form-control" id="sx-ai-engine"></select></label>
-<button class="sx-button sx-button--secondary" type="button" id="sx-ai-newChat">+ Новый чат</button>
-<strong>Мои чаты</strong>
-<input class="form-control" type="search" id="sx-ai-search" maxlength="200" placeholder="Поиск по чатам" aria-label="Поиск по названиям и сообщениям">
 <div id="sx-ai-listStatus" role="status"></div>
 <div id="sx-ai-chats"></div>
-<div class="sx-ai-project-tools">
-<label id="sx-ai-groupLabel" hidden>Проект текущего чата<select class="form-control" id="sx-ai-group"></select></label>
-<details id="sx-ai-folder"><summary>Файлы проекта</summary>
-<ul></ul><p role="status"></p>
-</details><details id="sx-ai-project"><summary>Память и навыки сайта</summary>
-<label>Особенности сайта<textarea class="form-control" id="sx-ai-rules" maxlength="12000" rows="5"></textarea></label>
-<label>Навыки сайта<textarea class="form-control" id="sx-ai-skills" maxlength="12000" rows="5" placeholder="## Название навыка&#10;Когда и как его применять"></textarea></label>
-<button class="sx-button sx-button--secondary" type="button" id="sx-ai-saveRules" hidden>Сохранить для сайта</button><p id="sx-ai-settingsStatus" role="status"></p>
-<details><summary>Общие правила и навыки SkeekS</summary><pre id="sx-ai-global"></pre></details></details></div></nav>
-<section class="sx-ai-conversation" aria-label="Переписка"><div id="sx-ai-scroll"><h2 id="sx-ai-title"></h2><p id="sx-ai-context"></p><section id="sx-ai-messages" aria-live="polite"></section><aside hidden id="sx-ai-preview" class="sx-ai-pending"><strong>Действие в CRM</strong><div class="sx-ai-pending-body"></div><div class="sx-ai-actions"><button type="button" class="sx-button sx-button--primary" id="sx-ai-confirm">Подтвердить</button><button type="button" class="sx-button sx-button--secondary" id="sx-ai-reject">Отклонить</button></div></aside><details id="sx-ai-activity" hidden><summary>Ход выполнения</summary><ol></ol></details></div><div class="sx-ai-composer"><div class="sx-ai-jobline"><p id="sx-ai-job" role="status"></p><button type="button" class="sx-button sx-button--secondary sx-button--sm" id="sx-ai-stop" hidden>Остановить</button></div><form>
+</nav>
+<section class="sx-ai-conversation" aria-label="Переписка"><div id="sx-ai-scroll"><h2 id="sx-ai-title"></h2><p id="sx-ai-context"></p><section id="sx-ai-messages" aria-live="polite"></section><aside hidden id="sx-ai-preview" class="sx-ai-pending"><strong>Действие в CRM</strong><div class="sx-ai-pending-body"></div><div class="sx-ai-actions"><button type="button" class="sx-button sx-button--primary" id="sx-ai-confirm">Подтвердить</button><button type="button" class="sx-button sx-button--secondary" id="sx-ai-reject">Отклонить</button></div></aside></div><div class="sx-ai-composer"><div class="sx-ai-jobline"><p id="sx-ai-job" role="status"></p><button type="button" class="sx-button sx-button--secondary sx-button--sm" id="sx-ai-stop" hidden>Остановить</button></div><form>
 <?= RichTextInputWidget::widget([
     'name' => 'message', 'options' => ['id' => 'sx-ai-message'],
     'preset' => 'basic', 'tools' => [], 'paragraph' => 'div', 'minHeight' => 72,
@@ -34,5 +36,22 @@ use skeeks\cms\widgets\formInputs\richText\RichTextInputWidget;
 <?= AttachmentsInputWidget::button(['for' => 'sx-ai-files']) ?>
 </div>
 <small>До 4 файлов, вместе до 4 МБ</small>
-</form><p id="sx-ai-status" role="status"></p></div></section></main>
+</form><p id="sx-ai-status" role="status"></p></div></section>
+<div id="sx-ai-side" class="sx-ai-side" role="complementary" aria-label="Панель чата">
+<div class="sx-ai-side-head"><strong>Панель чата</strong><button type="button" class="sx-ai-iconbtn" id="sx-ai-closeSide" title="Скрыть панель"><?= $icon('M6 6l12 12M18 6L6 18') ?><span>Скрыть</span></button></div>
+<details class="sx-ai-side-section" id="sx-ai-sideProject" open><summary>Проект чата</summary>
+<label id="sx-ai-groupLabel" hidden>Проект CRM<select class="form-control" id="sx-ai-group"></select></label>
+<p id="sx-ai-groupNote" class="sx-ai-note"></p>
+</details>
+<details class="sx-ai-side-section" id="sx-ai-folder"><summary>Файлы проекта</summary>
+<ul></ul><p role="status"></p>
+</details>
+<details class="sx-ai-side-section" id="sx-ai-project"><summary>Память и навыки сайта</summary>
+<label>Особенности сайта<textarea class="form-control" id="sx-ai-rules" maxlength="12000" rows="5"></textarea></label>
+<label>Навыки сайта<textarea class="form-control" id="sx-ai-skills" maxlength="12000" rows="5" placeholder="## Название навыка&#10;Когда и как его применять"></textarea></label>
+<button class="sx-button sx-button--secondary" type="button" id="sx-ai-saveRules" hidden>Сохранить для сайта</button><p id="sx-ai-settingsStatus" role="status"></p>
+<details><summary>Общие правила и навыки SkeekS</summary><pre id="sx-ai-global"></pre></details>
+</details>
+</div>
+</main>
 </dialog>

@@ -80,9 +80,11 @@ let sidebarVersion=0,searchTimer,updatingSidebar=false;
 const closedGroups=new Set();
 let sidebarSignature="";
 function drawSidebar({chats,projects},query){
+ sidebarProjects=projects;
  const signature=JSON.stringify([chats,projects,chatId,query]);
  if(signature===sidebarSignature)return;
  sidebarSignature=signature;
+ closeMenu();
  const names=new Map(projects.map(p=>[String(p.id),p.name]));
  const list=el("chats"),groups=new Map();
  list.replaceChildren();
@@ -97,20 +99,89 @@ function drawSidebar({chats,projects},query){
  for(const c of [...chats].sort((a,b)=>Number(b.is_pinned)-Number(a.is_pinned))){
    const pinned=!!Number(c.is_pinned),key=pinned?"pinned":String(c.project_id || "none");
    const section=group(key,pinned?"Закреплённые":names.get(key)||"Без проекта");
-   const row=document.createElement("div"),button=document.createElement("button"),pin=document.createElement("button");
-   row.className="sx-ai-chat-row";
+   const row=document.createElement("div"),button=document.createElement("button"),more=document.createElement("button");
+   row.className="sx-ai-chat-row";row.dataset.row=c.id;
    button.type="button";button.dataset.chat=c.id;button.textContent=c.title;button.title=c.title;
    if(Number(c.id)===chatId)button.setAttribute("aria-current","true");
-   pin.type="button";pin.className="sx-ai-pin";pin.dataset.pin=c.id;
-   pin.setAttribute("aria-pressed",String(pinned));pin.title=(pinned?"Открепить":"Закрепить")+" чат «"+c.title+"»";
-   pin.setAttribute("aria-label",pin.title);pin.textContent=pinned?"★":"☆";
-   row.append(button,pin);section.append(row);
+   more.type="button";more.className="sx-ai-more";more.dataset.more=c.id;
+   more.setAttribute("aria-haspopup","menu");more.setAttribute("aria-expanded","false");
+   more.setAttribute("aria-label","Действия с чатом «"+c.title+"»");more.textContent="⋯";
+   row.append(button,more);section.append(row);
+   chatInfo.set(Number(c.id),{title:c.title,pinned,project:c.project_id?Number(c.project_id):null});
  }
  el("listStatus").textContent=chats.length?"":query?"Совпадений нет":"Чатов пока нет";
  const current=chats.find(c=>Number(c.id)===chatId);
  el("groupLabel").hidden=!current || !projects.length;
+ el("groupNote").textContent=!chatId?"Проект выбирается после первого сообщения.":!projects.length?"Нет доступных проектов CRM.":"";
  el("group").replaceChildren(new Option("Без проекта",""),...projects.map(p=>new Option(p.name,p.id)));
  el("group").value=current?.project_id || "";
+}
+// Menu of a chat row: pin, rename, move to a CRM project, delete with an in-panel confirmation.
+let menu=null,sidebarProjects=[];
+const chatInfo=new Map();
+function closeMenu(){
+ if(!menu)return;
+ menu.owner?.setAttribute("aria-expanded","false");
+ menu.remove();menu=null;
+}
+function menuItem(label,fn,danger){
+ const b=document.createElement("button");b.type="button";b.setAttribute("role","menuitem");b.textContent=label;
+ if(danger)b.className="is-danger";
+ b.onclick=e=>{e.stopPropagation();fn();};
+ return b;
+}
+function openMenu(id,owner){
+ closeMenu();
+ const info=chatInfo.get(id);if(!info)return;
+ menu=document.createElement("div");menu.className="sx-ai-menu";menu.setAttribute("role","menu");menu.owner=owner;
+ owner.setAttribute("aria-expanded","true");
+ const fill=(...items)=>{menu.replaceChildren(...items);menu.querySelector("button,select")?.focus();};
+ const main=()=>fill(
+  menuItem(info.pinned?"Открепить":"Закрепить",()=>{closeMenu();changeSidebar({id,pin:!info.pinned});}),
+  menuItem("Переименовать",()=>{closeMenu();startRename(id);}),
+  ...(sidebarProjects.length?[menuItem("Перенести в проект",moveTo)]:[]),
+  menuItem("Удалить",confirmDelete,true));
+ const moveTo=()=>{
+  const select=document.createElement("select");select.className="form-control";select.setAttribute("aria-label","Проект CRM");
+  select.append(new Option("Без проекта",""),...sidebarProjects.map(p=>new Option(p.name,p.id)));
+  select.value=info.project||"";
+  select.onchange=()=>{closeMenu();changeSidebar({id,project:Number(select.value)||null});};
+  select.onclick=e=>e.stopPropagation();
+  fill(select,menuItem("Назад",main));
+ };
+ const confirmDelete=()=>{
+  const text=document.createElement("p");text.textContent="Удалить чат и всю переписку навсегда? Вернуть его будет нельзя.";
+  const status=document.createElement("p");status.className="sx-ai-menu-error";
+  fill(text,menuItem("Удалить навсегда",async()=>{
+   try{
+    await call("delete",{chatId:id});
+    closeMenu();
+    if(id===chatId)el("newChat").click();
+    sidebarSignature="";await refreshSidebar();
+   }catch(e){status.textContent=e.message;menu?.append(status);}
+  },true),menuItem("Отмена",main));
+ };
+ owner.closest(".sx-ai-chat-row").append(menu);
+ main();
+}
+function startRename(id){
+ const row=el("chats").querySelector('[data-row="'+id+'"]');if(!row)return;
+ const info=chatInfo.get(id);
+ const input=document.createElement("input");input.className="form-control sx-ai-rename";input.maxLength=120;input.value=info.title;
+ input.setAttribute("aria-label","Название чата");
+ row.replaceChildren(input);input.focus();input.select();
+ let done=false;
+ const finish=async save=>{
+  if(done)return;done=true;
+  const title=input.value.trim();
+  if(save && title && title!==info.title){
+   try{await call("rename",{chatId:id,title});if(id===chatId)el("title").textContent=title;}
+   catch(e){el("listStatus").textContent=e.message;}
+  }
+  sidebarSignature="";refreshSidebar();
+ };
+ input.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();finish(true);}if(e.key==="Escape"){e.preventDefault();e.stopPropagation();finish(false);}};
+ input.onblur=()=>finish(true);
 }
 async function refreshSidebar(change){
  const version=++sidebarVersion,query=el("search").value.trim();
@@ -367,14 +438,35 @@ el("newChat").onclick=()=>{
  panel.querySelector("[data-sx-rte-editor]")?.focus();
 };
 el("chats").onclick=e=>{
- const pin=e.target.closest("button[data-pin]");
- if(pin){changeSidebar({id:Number(pin.dataset.pin),pin:pin.getAttribute("aria-pressed")!=="true"});return;}
+ const more=e.target.closest("button[data-more]");
+ if(more){e.stopPropagation();if(menu && menu.owner===more)closeMenu();else openMenu(Number(more.dataset.more),more);return;}
+ if(e.target.closest(".sx-ai-menu,.sx-ai-rename"))return;
  const button=e.target.closest("button[data-chat]");
  if(!button)return;
  if(Number(button.dataset.chat)===chatId)showChats(false);
  else action(async()=>{await open({chat:Number(button.dataset.chat)});showChats(false);});
 };
-panel.addEventListener("close",()=>showChats(false));
+panel.addEventListener("close",()=>{showChats(false);closeMenu();});
+panel.addEventListener("click",e=>{if(menu && !e.target.closest(".sx-ai-menu"))closeMenu();});
+panel.addEventListener("keydown",e=>{if(e.key==="Escape" && menu){e.preventDefault();const owner=menu.owner;closeMenu();owner?.focus();}});
+// Search opens as a field under its row, like the desktop app.
+el("searchToggle").onclick=()=>{
+ const field=el("search"),open=field.hidden;
+ field.hidden=!open;el("searchToggle").setAttribute("aria-expanded",String(open));
+ if(open)field.focus();else if(field.value){field.value="";refreshSidebar();}
+};
+el("search").onkeydown=e=>{if(e.key==="Escape" && el("search").value){e.preventDefault();e.stopPropagation();el("search").value="";refreshSidebar();}};
+// Side panel of the chat: project, files, memory; remembered per browser.
+const wide=matchMedia("(min-width: 1100px)");
+function showSide(open,remember){
+ panel.classList.toggle("sx-ai-side-open",open);
+ el("toggleSide").setAttribute("aria-expanded",String(open));
+ if(remember)try{localStorage.setItem("sx-ai-side",open?"1":"0");}catch{}
+}
+let sidePref=null;try{sidePref=localStorage.getItem("sx-ai-side");}catch{}
+showSide(sidePref===null?wide.matches:sidePref==="1" && wide.matches,false);
+el("toggleSide").onclick=()=>showSide(!panel.classList.contains("sx-ai-side-open"),wide.matches);
+el("closeSide").onclick=()=>{showSide(false,wide.matches);el("toggleSide").focus();};
 let revision;
 el("project").ontoggle=async()=>{
  if(!el("project").open)return;
