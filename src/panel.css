@@ -72,9 +72,18 @@
 .sx-ai-side{display:flex;flex-direction:column;min-width:20rem;min-height:0;overflow:auto;padding:.5rem .75rem 1rem;border-inline-start:1px solid var(--sx-color-border);overflow-wrap:anywhere;visibility:hidden;transition:visibility 0s linear .366s}
 .sx-ai-side-open .sx-ai-side{visibility:visible;transition-delay:0s}
 .sx-ai-side-head{display:flex;align-items:center;justify-content:space-between;padding:.2rem 0 .4rem}
-.sx-ai-side-section{margin:.3rem 0!important;border:1px solid var(--sx-color-border);border-radius:.6rem;padding:.1rem .75rem}
-.sx-ai-side-section>summary{padding:.55rem 0;font-weight:600;cursor:pointer}
-.sx-ai-side-section[open]{padding-bottom:.6rem}
+/* Rows like the Claude side panel: title with a chevron, a short value on the right, thin dividers. */
+.sx-ai-side-section{margin:0!important;border-bottom:1px solid var(--sx-color-border);padding:0 .25rem}
+.sx-ai-side-section>summary{display:flex;align-items:center;gap:.6rem;padding:.85rem 0;cursor:pointer;list-style:none}
+.sx-ai-side-section>summary::-webkit-details-marker{display:none}
+.sx-ai-row-title{display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap}
+.sx-ai-row-title::after{content:"";width:.38rem;height:.38rem;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);opacity:.6;margin-inline-start:.2rem;transition:transform .15s}
+.sx-ai-side-section[open]>summary .sx-ai-row-title::after{transform:rotate(45deg)}
+.sx-ai-row-value{margin-inline-start:auto;display:inline-flex;align-items:center;gap:.5rem;min-width:0;color:var(--sx-color-text-muted,inherit);font-size:.92em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sx-ai-row-meter{display:inline-block;width:1.8rem;height:.4rem;border-radius:1rem;background:var(--sx-color-surface-hover);overflow:hidden;flex:none}
+.sx-ai-row-meter i{display:block;height:100%;min-width:.4rem;border-radius:1rem;background:var(--sx-color-accent,#5b8def)}
+.sx-ai-side-section[open]{padding-bottom:.8rem}
+.sx-ai-side-section>summary:hover .sx-ai-row-title{opacity:.85}
 .sx-ai-side label{display:block;margin:.3rem 0}
 .sx-ai-side ul{margin:.2rem 0;padding-inline-start:1.1rem}
 .sx-ai-note{margin:.2rem 0;color:var(--sx-color-text-muted,inherit);font-size:.92em}

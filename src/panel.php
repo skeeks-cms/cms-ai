@@ -51,16 +51,16 @@ $icon = static function (string $path): string {
 </div></section>
 <div id="sx-ai-side" class="sx-ai-side" role="complementary" aria-label="Панель чата">
 <div class="sx-ai-side-head"><strong>Панель чата</strong><button type="button" class="sx-ai-iconbtn" id="sx-ai-closeSide" title="Скрыть панель"><?= $icon('M6 6l12 12M18 6L6 18') ?><span>Скрыть</span></button></div>
-<details class="sx-ai-side-section" id="sx-ai-sideProject" open><summary>Проект чата</summary>
+<details class="sx-ai-side-section" id="sx-ai-sideProject"><summary><span class="sx-ai-row-title">Проект чата</span><span class="sx-ai-row-value"></span></summary>
 <label id="sx-ai-groupLabel" hidden>Проект CRM<select class="form-control" id="sx-ai-group"></select></label>
 <p id="sx-ai-groupNote" class="sx-ai-note"></p>
 </details>
-<details class="sx-ai-side-section" id="sx-ai-folder"><summary>Файлы проекта</summary>
+<details class="sx-ai-side-section" id="sx-ai-folder"><summary><span class="sx-ai-row-title">Файлы проекта</span><span class="sx-ai-row-value"></span></summary>
 <ul></ul><p role="status"></p>
 </details>
-<details class="sx-ai-side-section" id="sx-ai-ctx" open><summary>Контекст</summary><div class="sx-ai-context-body"><p class="sx-ai-note">Появится после первого ответа в чате.</p></div></details>
-<details class="sx-ai-side-section" id="sx-ai-usage"><summary>Расход</summary><div class="sx-ai-usage-body"><p class="sx-ai-note">Загружаю…</p></div></details>
-<details class="sx-ai-side-section" id="sx-ai-project"><summary>Память и навыки сайта</summary>
+<details class="sx-ai-side-section" id="sx-ai-ctx"><summary><span class="sx-ai-row-title">Контекст</span><span class="sx-ai-row-value"></span></summary><div class="sx-ai-context-body"><p class="sx-ai-note">Появится после первого ответа в чате.</p></div></details>
+<details class="sx-ai-side-section" id="sx-ai-usage"><summary><span class="sx-ai-row-title">Расход</span><span class="sx-ai-row-value"></span></summary><div class="sx-ai-usage-body"><p class="sx-ai-note">Загружаю…</p></div></details>
+<details class="sx-ai-side-section" id="sx-ai-project"><summary><span class="sx-ai-row-title">Память и навыки сайта</span><span class="sx-ai-row-value"></span></summary>
 <label>Особенности сайта<textarea class="form-control" id="sx-ai-rules" maxlength="12000" rows="5"></textarea></label>
 <label>Навыки сайта<textarea class="form-control" id="sx-ai-skills" maxlength="12000" rows="5" placeholder="## Название навыка&#10;Когда и как его применять"></textarea></label>
 <button class="sx-button sx-button--secondary" type="button" id="sx-ai-saveRules" hidden>Сохранить для сайта</button><p id="sx-ai-settingsStatus" role="status"></p>

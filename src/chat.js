@@ -20,6 +20,8 @@ async function call(op,body){
 let chatId=null,context="",pending=null,run=null,lastEventId=0,pollTimer=null,busy=false,current=null;
 const active=r=>r && ["queued","running"].includes(r.status);
 const folder=el("folder");
+// Short value at the right of a side panel row (like the Claude side panel).
+const rowValue=(id,...content)=>el(id).querySelector(":scope>summary .sx-ai-row-value").replaceChildren(...content);
 async function saveProjectFile(file, ownerChat){
  const response=await fetch("/ai-panel/project-save",{method:"POST",
   headers:{"Content-Type":"application/json","X-CSRF-Token":yii.getCsrfToken(),"X-Skeeks-AI-Chat":String(ownerChat)},
@@ -73,6 +75,7 @@ async function refreshFolder(){
   }while(offset!==null);
   list.replaceChildren(...items);
   status.textContent=items.length?"":"В проекте пока нет файлов.";
+  rowValue("folder",items.length?String(items.length):"");
  }catch(error){list.replaceChildren();status.textContent=error.message;}
 }
 folder.ontoggle=()=>{if(folder.open)refreshFolder();};
@@ -124,6 +127,7 @@ function drawSidebar({chats,projects},query){
  el("groupNote").textContent=!chatId?"Проект выбирается после первого сообщения.":!projects.length?"Нет доступных проектов CRM.":"";
  el("group").replaceChildren(new Option("Без проекта",""),...projects.map(p=>new Option(p.name,p.id)));
  el("group").value=current?.project_id || "";
+ rowValue("sideProject",current?(projects.find(p=>Number(p.id)===Number(current.project_id))?.name||"Без проекта"):"");
 }
 // Menu of a chat row: pin, rename, move to a CRM project, delete with an in-panel confirmation.
 let menu=null,sidebarProjects=[];
@@ -445,6 +449,7 @@ function render(data){
  run=data.run;lastEventId=data.lastEventId||0;
  renderPending();
  renderContext(data.context);
+ if(usageChat!==chatId)refreshUsage();
  renderActivity(data.events||[],true);
  renderRun();
  if(follow)scroll.scrollTop=scroll.scrollHeight;
@@ -551,6 +556,12 @@ el("closeSide").onclick=e=>{showSide(false,wide.matches);if(e.detail===0)el("tog
 const contextColors={rules:"#d97757",catalog:"#5b8def",skills:"#a77bdc",attachments:"#e0a03c",conversation:"#3fa37a",tools:"#c45c8a",engine:"#8a8f98"};
 function renderContext(c){
  const body=el("ctx").querySelector(".sx-ai-context-body");
+ if(!c)rowValue("ctx");
+ else{
+  const share=c.window?Math.min(100,Math.round(c.used/c.window*100)):null,meter=document.createElement("span"),fill=document.createElement("i");
+  meter.className="sx-ai-row-meter";fill.style.width=(share??0)+"%";meter.append(fill);
+  rowValue("ctx",share!==null?share+"%":fmt.tokens(c.used),...(share!==null?[meter]:[]));
+ }
  if(!c){body.replaceChildren(Object.assign(document.createElement("p"),{className:"sx-ai-note",textContent:chatId?"Появится после следующего ответа.":"Появится после первого ответа в чате."}));return;}
  const head=document.createElement("div");head.className="sx-ai-context-head";
  const pct=c.window?Math.min(100,Math.round(c.used/c.window*100)):null;
@@ -578,6 +589,8 @@ function renderContext(c){
 }
 // Side panel "Расход": tokens of this chat, mine for the month and, for administrators, the account.
 const usageBox=el("usage");
+// Chat whose figures the open section shows: another chat refreshes it on opening.
+let usageChat;
 function usageTable(title,rows,label){
  if(!rows || !rows.length)return null;
  const wrap=document.createElement("div");wrap.className="sx-ai-usage-group";
@@ -601,11 +614,13 @@ function usageTotal(title,t){
  wrap.append(h,p);return wrap;
 }
 async function refreshUsage(){
- if(!usageBox.open)return;
- const body=usageBox.querySelector(".sx-ai-usage-body");
+ const body=usageBox.querySelector(".sx-ai-usage-body"),forChat=chatId;
  try{
-  const r=await fetch(endpoint("usage",{chat:chatId}));const d=await r.json();
+  const r=await fetch(endpoint("usage",{chat:forChat}));const d=await r.json();
+  if(forChat!==chatId)return;
   if(!r.ok)throw Error(d.error||"Не удалось загрузить расход.");
+  usageChat=forChat;
+  rowValue("usage",forChat && d.chat?.input?fmt.tokens(d.chat.input):"");
   const note=document.createElement("p");note.className="sx-ai-note";
   note.textContent="Токены — по данным движков. Токены из кеша по ценам API в разы дешевле обычных. Сумма в долларах — ориентир по официальным ценам API, не счёт.";
   body.replaceChildren(...[
@@ -617,9 +632,9 @@ async function refreshUsage(){
    d.account?usageTotal("Весь аккаунт за "+d.month,d.account):null,
    d.account?usageTable("По сотрудникам",d.accountByUser,r=>r.user):null,
    note].filter(Boolean));
- }catch(e){body.replaceChildren(Object.assign(document.createElement("p"),{className:"sx-ai-note",textContent:e.message}));}
+ }catch(e){if(forChat===chatId)body.replaceChildren(Object.assign(document.createElement("p"),{className:"sx-ai-note",textContent:e.message}));}
 }
-usageBox.ontoggle=refreshUsage;
+usageBox.ontoggle=()=>{if(usageBox.open)refreshUsage();};
 let revision;
 el("project").ontoggle=async()=>{
  if(!el("project").open)return;
