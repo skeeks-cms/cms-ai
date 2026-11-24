@@ -76,7 +76,7 @@ async function refreshFolder(){
  }catch(error){list.replaceChildren();status.textContent=error.message;}
 }
 folder.ontoggle=()=>{if(folder.open)refreshFolder();};
-let sidebarVersion=0,searchTimer,updatingSidebar=false;
+let sidebarVersion=0,searchTimer,updatingSidebar=false,sidebarTimer;
 const closedGroups=new Set();
 let sidebarSignature="";
 function drawSidebar({chats,projects},query){
@@ -101,12 +101,21 @@ function drawSidebar({chats,projects},query){
    const section=group(key,pinned?"Закреплённые":names.get(key)||"Без проекта");
    const row=document.createElement("div"),button=document.createElement("button"),more=document.createElement("button");
    row.className="sx-ai-chat-row";row.dataset.row=c.id;
-   button.type="button";button.dataset.chat=c.id;button.textContent=c.title;button.title=c.title;
+   button.type="button";button.dataset.chat=c.id;button.title=c.title;
+   const label=document.createElement("span");label.className="sx-ai-chat-title";label.textContent=c.title;button.append(label);
+   let mark=null;
+   if(c.working || c.waiting){
+    // As in the desktop app: the state sits at the right end of the row, "⋯" replaces it on hover.
+    mark=document.createElement("span");
+    mark.className=c.working?"sx-ai-chat-state is-working":"sx-ai-chat-state is-waiting";
+    mark.title=c.working?"Выполняется поручение":"Ждёт подтверждения";mark.setAttribute("role","img");mark.setAttribute("aria-label",mark.title);
+    row.classList.add("has-state");
+   }
    if(Number(c.id)===chatId)button.setAttribute("aria-current","true");
    more.type="button";more.className="sx-ai-more";more.dataset.more=c.id;
    more.setAttribute("aria-haspopup","menu");more.setAttribute("aria-expanded","false");
    more.setAttribute("aria-label","Действия с чатом «"+c.title+"»");more.textContent="⋯";
-   row.append(button,more);section.append(row);
+   row.append(button,...(mark?[mark]:[]),more);section.append(row);
    chatInfo.set(Number(c.id),{title:c.title,pinned,project:c.project_id?Number(c.project_id):null});
  }
  el("listStatus").textContent=chats.length?"":query?"Совпадений нет":"Чатов пока нет";
@@ -191,6 +200,9 @@ async function refreshSidebar(change){
    if(!r.ok)throw Error("Не удалось обновить список чатов.");
    const data=await r.json();
    if(version===sidebarVersion)drawSidebar(data,query);
+   // While any chat works, refresh the list so background chats show their state.
+   clearTimeout(sidebarTimer);
+   if(panel.open && data.chats.some(c=>c.working))sidebarTimer=setTimeout(()=>refreshSidebar(),3000);
  }catch(error){if(version===sidebarVersion){sidebarSignature="";el("listStatus").textContent="Не удалось обновить список чатов.";}}
 }
 async function changeSidebar(change){

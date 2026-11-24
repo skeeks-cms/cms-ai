@@ -88,10 +88,16 @@ final class PanelController extends Controller
                 ->where('m.chat_id = c.id')->andWhere(['like','m.text',$q]);
             $query->andWhere(['or',['like','c.title',$q],['exists',$matches]]);
         }
-        $rows = $query->select(['c.id','c.title','c.project_id','c.is_pinned'])
+        // State for the list: a run in progress or an action waiting for confirmation.
+        $working = (new \yii\db\Query())->from(['r'=>ChatApi::RUN])->where('r.chat_id = c.id')->andWhere(['r.status'=>ChatApi::ACTIVE]);
+        $rows = $query->select(['c.id','c.title','c.project_id','c.is_pinned',
+                'working'=>new \yii\db\Expression('EXISTS(' . $working->select('r.id')->createCommand()->rawSql . ')'),
+                'waiting'=>new \yii\db\Expression('c.pending IS NOT NULL')])
             ->orderBy(['c.updated_at'=>SORT_DESC,'c.id'=>SORT_DESC])->all();
         foreach ($rows as &$row) {
             if (!isset($names[$row['project_id']])) { $row['project_id'] = null; }
+            $row['working'] = (bool)$row['working'];
+            $row['waiting'] = (bool)$row['waiting'];
         }
         return ['chats'=>$rows,'projects'=>$projects];
     }
