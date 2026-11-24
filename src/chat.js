@@ -563,7 +563,7 @@ document.addEventListener("click",event=>{
  const trigger=event.target.closest("[data-sx-ai-open]");
  if(!trigger)return;
  const company=trigger.dataset.sxAiCompany || document.querySelector("[data-sx-ai-company]")?.dataset.sxAiCompany || "";
- if(!panel.open)panel.showModal();
+ if(!panel.open){panel.showModal();panel.getBoundingClientRect();panel.classList.add("is-shown");}
  if(company===context && current){
    if(chatId)open({chat:chatId}).catch(e=>el("status").textContent=e.message);
    return;
@@ -573,5 +573,18 @@ document.addEventListener("click",event=>{
  open({company}).then(()=>el("status").textContent="").catch(e=>el("status").textContent=e.message);
 });
 panel.addEventListener("close",stopPolling);
-panel.querySelector("[data-sx-ai-close]").onclick=()=>panel.close();
+// Close with the same slide; Esc goes through the same path.
+let closing=null;
+function closePanel(){
+ if(!panel.open || closing)return;
+ const reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
+ panel.classList.remove("is-shown");
+ const done=()=>{clearTimeout(closing);closing=null;panel.removeEventListener("transitionend",onEnd);panel.close();};
+ const onEnd=e=>{if(e.target===panel && e.propertyName==="transform")done();};
+ if(reduced){panel.close();return;}
+ panel.addEventListener("transitionend",onEnd);
+ closing=setTimeout(done,450);
+}
+panel.addEventListener("cancel",e=>{e.preventDefault();if(!menu)closePanel();});
+panel.querySelector("[data-sx-ai-close]").onclick=closePanel;
 })();
