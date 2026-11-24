@@ -203,3 +203,49 @@ html.sx-ai-open,html.sx-ai-open body{overflow:hidden!important}
 .sx-ai-context-table td:nth-child(2){width:28%;text-align:end;white-space:nowrap}
 .sx-ai-context-table td:last-child{width:18%;text-align:end;color:var(--sx-color-text-muted,inherit)}
 .sx-ai-context-table i{display:inline-block;width:.6rem;height:.6rem;border-radius:.15rem;margin-inline-end:.45rem;vertical-align:-.02em}
+/* "Файлы проекта" row is a button that opens the file manager drawer. */
+.sx-ai-side-link{display:flex;align-items:center;gap:.6rem;width:100%;padding:.85rem .25rem;border:0;border-bottom:1px solid var(--sx-color-border);background:transparent;color:inherit;font:inherit;text-align:start;cursor:pointer}
+.sx-ai-side-link .sx-ai-row-title::after{transform:rotate(-45deg)!important}
+.sx-ai-side-link[aria-expanded="true"] .sx-ai-row-title{font-weight:600}
+/* File manager: a drawer over the chat with folders on the left and the folder or the open file on the right. */
+.sx-ai-panel main{position:relative}
+.sx-ai-fm{position:absolute;inset:0 0 0 auto;z-index:8;width:min(62rem,calc(100% - 1.5rem));display:flex;flex-direction:column;min-height:0;background:var(--sx-color-surface);border-inline-start:1px solid var(--sx-color-border);box-shadow:-12px 0 32px #0004;transform:translateX(100%);transition:transform var(--sx-ai-slide)}
+.sx-ai-fm.is-open{transform:none}
+.sx-ai-fm svg{width:1.05rem;height:1.05rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.sx-ai-fm-head{display:flex;align-items:center;gap:.3rem;padding:.7rem 1rem;border-bottom:1px solid var(--sx-color-border)}
+.sx-ai-fm-head strong{font-size:1.05em}
+.sx-ai-fm-space{flex:1}
+.sx-ai-fm-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem;padding:.55rem 1rem;font-size:.92em;color:var(--sx-color-text-muted,inherit)}
+.sx-ai-fm-crumbs button{border:0;background:transparent;color:inherit;font:inherit;padding:.1rem .25rem;border-radius:.3rem;cursor:pointer}
+.sx-ai-fm-crumbs button:hover{background:var(--sx-color-surface-hover);color:var(--sx-color-text,inherit)}
+.sx-ai-fm-crumbs strong{color:var(--sx-color-text,inherit);font-weight:600}
+.sx-ai-fm-body{flex:1;display:grid;grid-template-columns:14rem minmax(0,1fr);min-height:0;border-top:1px solid var(--sx-color-border)}
+.sx-ai-fm-tree{overflow:auto;padding:.4rem;border-inline-end:1px solid var(--sx-color-border)}
+.sx-ai-fm-tree ul{list-style:none;margin:0;padding:0}
+.sx-ai-fm-tree button{display:flex;align-items:center;gap:.45rem;width:100%;border:0;border-radius:.4rem;background:transparent;color:inherit;font:inherit;font-size:.93em;text-align:start;padding:.35rem .5rem;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sx-ai-fm-tree button:hover{background:var(--sx-color-surface-hover)}
+.sx-ai-fm-tree button[aria-current]{background:var(--sx-color-surface-hover);font-weight:600}
+.sx-ai-fm-main{overflow:auto;padding:.5rem 1rem 1rem;min-width:0}
+.sx-ai-fm-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 5.5rem 8.5rem 2.2rem;align-items:center;gap:.5rem;border-bottom:1px solid var(--sx-color-border)}
+.sx-ai-fm-row:hover{background:var(--sx-color-surface-hover)}
+.sx-ai-fm-open{display:flex;align-items:center;gap:.55rem;min-width:0;border:0;background:transparent;color:inherit;font:inherit;text-align:start;padding:.6rem .4rem;cursor:pointer}
+.sx-ai-fm-open span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sx-ai-fm-meta{font-size:.88em;color:var(--sx-color-text-muted,inherit);white-space:nowrap;text-align:end}
+.sx-ai-fm-more{opacity:0;justify-content:center;padding:.3rem}
+.sx-ai-fm-row:hover .sx-ai-fm-more,.sx-ai-fm-more:focus-visible,.sx-ai-fm-more[aria-expanded="true"]{opacity:1}
+.sx-ai-fm-row .sx-ai-menu{top:calc(100% - .2rem)}
+.sx-ai-fm-name{margin:.35rem 0;max-width:24rem}
+.sx-ai-fm-empty{padding:2rem 0;text-align:center}
+.sx-ai-fm-actions{display:flex;flex-wrap:wrap;gap:.3rem;margin:.2rem 0 .4rem}
+.sx-ai-fm-actions .sx-ai-iconbtn{border:1px solid var(--sx-color-border)}
+.sx-ai-fm-primary{background:var(--sx-color-text,#fff)!important;color:var(--sx-color-surface,#000)!important}
+.sx-ai-fm-preview img{display:block;max-width:100%;border-radius:.4rem;border:1px solid var(--sx-color-border)}
+.sx-ai-fm-preview iframe{width:100%;height:min(70vh,40rem);border:1px solid var(--sx-color-border);border-radius:.4rem;background:#fff}
+.sx-ai-fm-preview pre{margin:0;padding:.8rem;max-height:70vh;overflow:auto;border:1px solid var(--sx-color-border);border-radius:.4rem;font-size:.85em;white-space:pre-wrap;overflow-wrap:anywhere}
+.sx-ai-fm-editor{width:100%;min-height:min(60vh,34rem);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.85em}
+.sx-ai-fm-status{margin:0;padding:.45rem 1rem;min-height:1.9rem;font-size:.9em;color:var(--sx-color-text-muted,inherit);border-top:1px solid var(--sx-color-border)}
+.sx-ai-fm-status.is-error{color:var(--sx-color-danger,#d33)}
+.sx-ai-fm-drop{position:absolute;inset:.5rem;display:none;align-items:center;justify-content:center;border:2px dashed var(--sx-color-accent,currentColor);border-radius:.8rem;background:color-mix(in srgb,var(--sx-color-surface) 85%,transparent);font-weight:600;pointer-events:none}
+.sx-ai-fm.is-dropping .sx-ai-fm-drop{display:flex}
+@media(max-width:760px){.sx-ai-fm{width:100%}.sx-ai-fm-body{grid-template-columns:1fr}.sx-ai-fm-tree{display:none}.sx-ai-fm-row{grid-template-columns:minmax(0,1fr) 4.5rem 2.2rem}.sx-ai-fm-row .sx-ai-fm-meta:nth-of-type(2){display:none}}
+@media(prefers-reduced-motion:reduce){.sx-ai-fm{transition:none}}

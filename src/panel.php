@@ -55,9 +55,7 @@ $icon = static function (string $path): string {
 <label id="sx-ai-groupLabel" hidden>Проект CRM<select class="form-control" id="sx-ai-group"></select></label>
 <p id="sx-ai-groupNote" class="sx-ai-note"></p>
 </details>
-<details class="sx-ai-side-section" id="sx-ai-folder"><summary><span class="sx-ai-row-title">Файлы проекта</span><span class="sx-ai-row-value"></span></summary>
-<ul></ul><p role="status"></p>
-</details>
+<button type="button" class="sx-ai-side-section sx-ai-side-link" id="sx-ai-folder" aria-haspopup="dialog" aria-expanded="false"><span class="sx-ai-row-title">Файлы проекта</span><span class="sx-ai-row-value"></span></button>
 <details class="sx-ai-side-section" id="sx-ai-ctx"><summary><span class="sx-ai-row-title">Контекст</span><span class="sx-ai-row-value"></span></summary><div class="sx-ai-context-body"><p class="sx-ai-note">Появится после первого ответа в чате.</p></div></details>
 <details class="sx-ai-side-section" id="sx-ai-usage"><summary><span class="sx-ai-row-title">Расход</span><span class="sx-ai-row-value"></span></summary><div class="sx-ai-usage-body"><p class="sx-ai-note">Загружаю…</p></div></details>
 <details class="sx-ai-side-section" id="sx-ai-project"><summary><span class="sx-ai-row-title">Память и навыки сайта</span><span class="sx-ai-row-value"></span></summary>

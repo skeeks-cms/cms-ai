@@ -19,9 +19,8 @@ async function call(op,body){
 }
 let chatId=null,context="",pending=null,run=null,lastEventId=0,pollTimer=null,busy=false,current=null;
 const active=r=>r && ["queued","running"].includes(r.status);
-const folder=el("folder");
 // Short value at the right of a side panel row (like the Claude side panel).
-const rowValue=(id,...content)=>el(id).querySelector(":scope>summary .sx-ai-row-value").replaceChildren(...content);
+const rowValue=(id,...content)=>el(id).querySelector(".sx-ai-row-value").replaceChildren(...content);
 async function saveProjectFile(file, ownerChat){
  const response=await fetch("/ai-panel/project-save",{method:"POST",
   headers:{"Content-Type":"application/json","X-CSRF-Token":yii.getCsrfToken(),"X-Skeeks-AI-Chat":String(ownerChat)},
@@ -37,48 +36,229 @@ function actionButton(label,fn){
  button.type="button";button.className="sx-button sx-button--secondary";button.textContent=label;button.onclick=fn;
  return button;
 }
-async function editFile(item,file){
- if(item.querySelector("textarea"))return;
- const response=await fetch("/ai-panel/project-download?path="+encodeURIComponent(file.path));
- if(!response.ok)throw Error("Не удалось прочитать файл.");
- const field=document.createElement("textarea");
- field.className="form-control";field.rows=8;field.setAttribute("aria-label",file.path);
- field.value=new TextDecoder("utf-8",{fatal:true}).decode(await response.arrayBuffer());
- const editor=document.createElement("div");
- editor.append(field,actionButton("Сохранить изменения",async()=>{
-  try{await saveProjectFile({path:file.path,revision:file.revision,text:field.value},chatId);await refreshFolder();}
-  catch(e){folder.querySelector("p").textContent=e.message;}
- }),actionButton("Отмена",()=>editor.remove()));
- item.append(editor);field.focus();
+// File manager of the shared project files: a drawer over the chat with a folder tree, the files of a folder,
+// preview and editing. Files live in the central service; the site checks the rights.
+const folder=el("folder");
+const canWrite=panel.dataset.projectWrite==="1";
+const fm={items:[],cwd:"",file:null,box:null,busy:false};
+const fmSvg=d=>{const s=document.createElementNS("http://www.w3.org/2000/svg","svg");s.setAttribute("viewBox","0 0 24 24");s.setAttribute("aria-hidden","true");
+ const p=document.createElementNS("http://www.w3.org/2000/svg","path");p.setAttribute("d",d);s.append(p);return s;};
+const fmIcons={dir:"M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",file:"M7 3h7l5 5v13H7zM14 3v5h5",
+ image:"M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4",code:"M9 8l-4 4 4 4M15 8l4 4-4 4",up:"M12 19V5M5 12l7-7 7 7",plus:"M12 5v14M5 12h14",close:"M6 6l12 12M18 6L6 18",more:"M5 12h.01M12 12h.01M19 12h.01"};
+const fmKind=p=>/\.(png|jpe?g|webp|gif|svg)$/i.test(p)?"image":/\.(html?|css|js|json|md|txt|xml|svg|php)$/i.test(p)?"code":"file";
+const fmText=p=>/\.(html?|css|js|json|md|txt|xml|svg|csv)$/i.test(p);
+const fmParent=p=>p.includes("/")?p.slice(0,p.lastIndexOf("/")):"";
+const fmName=p=>p.slice(p.lastIndexOf("/")+1);
+const fmJoin=(dir,name)=>dir?dir+"/"+name:name;
+const fmSize=b=>b<1024?b+" Б":b<1048576?(b/1024).toLocaleString("ru-RU",{maximumFractionDigits:1})+" КБ":(b/1048576).toLocaleString("ru-RU",{maximumFractionDigits:1})+" МБ";
+const fmDate=t=>t?new Date(t*1000).toLocaleString("ru-RU",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
+function fmFolders(){
+ const set=new Set();
+ for(const i of fm.items){let p=i.dir?i.path:fmParent(i.path);while(p){set.add(p);p=fmParent(p);}}
+ return set;
 }
-async function refreshFolder(){
- const list=folder.querySelector("ul");
- const status=folder.querySelector("p");
- const items=[];
+function fmBtn(label,icon,fn,cls=""){
+ const b=document.createElement("button");b.type="button";b.className="sx-ai-iconbtn "+cls;
+ if(icon)b.append(fmSvg(fmIcons[icon]));
+ const t=document.createElement("span");t.textContent=label;b.append(t);b.onclick=fn;return b;
+}
+function fmStatus(text,error){const s=fm.box.querySelector(".sx-ai-fm-status");s.textContent=text||"";s.classList.toggle("is-error",!!error);}
+async function fmFetch(url,options){
+ const r=await fetch(url,options);
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok)throw Error(r.status===403?"Нет прав на файлы проекта.":d.message||d.error||"Не удалось выполнить действие.");
+ return d;
+}
+async function fmLoad(){
  try{
-  let offset=0;
-  do{
-   const response=await fetch("/ai-panel/project-files?offset="+offset);
-   if(!response.ok)throw Error(response.status===403?"Нет доступа к файлам проекта.":"Не удалось открыть папку проекта.");
-   const data=await response.json();
-   for(const file of data.files){
-    const item=document.createElement("li"), link=document.createElement("a");
-    link.href="/ai-panel/project-download?path="+encodeURIComponent(file.path);
-    link.textContent=file.path;link.download=file.path.split("/").pop();
-    item.append(link);
-    if(panel.dataset.projectWrite==="1" && /\.(html?|css|txt|md|js|json|svg)$/i.test(file.path)){
-     item.append(" ",actionButton("Редактировать",()=>editFile(item,file).catch(e=>status.textContent=e.message)));
-    }
-    items.push(item);
-   }
-   offset=data.next_offset;
-  }while(offset!==null);
-  list.replaceChildren(...items);
-  status.textContent=items.length?"":"В проекте пока нет файлов.";
-  rowValue("folder",items.length?String(items.length):"");
- }catch(error){list.replaceChildren();status.textContent=error.message;}
+  fm.items=(await fmFetch("/ai-panel/project-tree")).items;
+  rowValue("folder",String(fm.items.filter(i=>!i.dir).length||""));
+  if(fm.cwd && !fmFolders().has(fm.cwd))fm.cwd="";
+  if(fm.file && !fm.items.some(i=>i.path===fm.file.path))fm.file=null;
+  if(fm.box && !fm.box.hidden)fmRender();
+ }catch(e){if(fm.box)fmStatus(e.message,true);}
 }
-folder.ontoggle=()=>{if(folder.open)refreshFolder();};
+async function fmChange(body,done){
+ try{fmStatus("Сохраняю…");await fmFetch("/ai-panel/project-change",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":yii.getCsrfToken()},body:JSON.stringify(body)});
+  fmStatus(done);await fmLoad();}
+ catch(e){fmStatus(e.message,true);}
+}
+async function fmUpload(files){
+ if(!canWrite){fmStatus("Нет права записи в проект.",true);return;}
+ let ok=0;
+ for(const file of files){
+  const path=fmJoin(fm.cwd,file.name),current=fm.items.find(i=>i.path===path && !i.dir);
+  const form=new FormData();form.append("file",file);form.append("path",path);form.append("revision",current?.revision||"");
+  try{fmStatus("Загружаю "+file.name+"…");await fmFetch("/ai-panel/project-upload",{method:"POST",headers:{"X-CSRF-Token":yii.getCsrfToken()},body:form});ok++;}
+  catch(e){fmStatus(file.name+": "+e.message,true);await fmLoad();return;}
+ }
+ fmStatus(ok===1?"Файл загружен.":"Загружено файлов: "+ok+".");await fmLoad();
+}
+// Inline name field in place of a row title: Enter saves, Esc cancels.
+function fmAskName(anchor,value,save){
+ const input=document.createElement("input");input.className="form-control sx-ai-fm-name";input.value=value;
+ const restore=()=>input.replaceWith(anchor);
+ input.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const v=input.value.trim();restore();if(v && v!==value)save(v);}
+  if(e.key==="Escape"){e.preventDefault();e.stopPropagation();restore();}};
+ // Leaving the browser window keeps the field; a click elsewhere on the page cancels it.
+ input.onblur=()=>{setTimeout(()=>{if(input.isConnected && document.hasFocus() && document.activeElement!==input)restore();},0);};
+ anchor.replaceWith(input);input.focus();input.select();
+}
+function fmRowMenu(item,row,title){
+ closeMenu();
+ menu=document.createElement("div");menu.className="sx-ai-menu";menu.setAttribute("role","menu");menu.owner=row.querySelector(".sx-ai-fm-more");
+ const fill=(...items)=>{menu.replaceChildren(...items);menu.querySelector("button")?.focus();};
+ const main=()=>fill(
+  ...(item.dir?[menuItem("Открыть",()=>{closeMenu();fm.cwd=item.path;fm.file=null;fmRender();})]:[menuItem("Открыть",()=>{closeMenu();fmOpen(item);}),
+   menuItem("Скачать",()=>{closeMenu();location.href="/ai-panel/project-download?path="+encodeURIComponent(item.path);})]),
+  ...(canWrite?[menuItem("Переименовать",()=>{closeMenu();fmAskName(title,fmName(item.path),v=>fmChange({op:"move",from:item.path,to:fmJoin(fmParent(item.path),v)},"Переименовано."));}),
+   menuItem("Переместить в папку…",()=>{closeMenu();fmAskName(title,fmParent(item.path),v=>fmChange({op:"move",from:item.path,to:fmJoin(v.replace(/^\/+|\/+$/g,""),fmName(item.path))},"Перемещено."));}),
+   menuItem("Удалить",confirm,true)]:[]));
+ const confirm=()=>{
+  const text=document.createElement("p");text.textContent=item.dir?"Удалить папку «"+fmName(item.path)+"» со всем содержимым?":"Удалить файл «"+fmName(item.path)+"»?";
+  fill(text,menuItem("Удалить",()=>{closeMenu();fmChange({op:"delete",items:[item.dir?{path:item.path}:{path:item.path,revision:item.revision}]},"Удалено.");},true),menuItem("Отмена",main));
+ };
+ main();row.append(menu);menu.owner?.setAttribute("aria-expanded","true");
+}
+function fmCrumbs(){
+ const nav=document.createElement("nav");nav.className="sx-ai-fm-crumbs";nav.setAttribute("aria-label","Путь");
+ const parts=fm.cwd?fm.cwd.split("/"):[];
+ const go=(path)=>{const b=document.createElement("button");b.type="button";b.textContent=path===""?"Проект":fmName(path);b.onclick=()=>{fm.cwd=path;fm.file=null;fmRender();};return b;};
+ nav.append(go(""));
+ parts.forEach((_,i)=>{nav.append(Object.assign(document.createElement("span"),{textContent:"/"}),go(parts.slice(0,i+1).join("/")));});
+ if(fm.file)nav.append(Object.assign(document.createElement("span"),{textContent:"/"}),Object.assign(document.createElement("strong"),{textContent:fmName(fm.file.path)}));
+ return nav;
+}
+function fmTree(){
+ const folders=[...fmFolders()].sort((a,b)=>a.localeCompare(b,"ru"));
+ const list=document.createElement("ul");
+ const item=(path,depth)=>{
+  const li=document.createElement("li"),b=document.createElement("button");b.type="button";
+  b.style.paddingInlineStart=(.5+depth*.9)+"rem";b.append(fmSvg(fmIcons.dir),document.createTextNode(path===""?"Проект":fmName(path)));
+  if(path===fm.cwd)b.setAttribute("aria-current","true");
+  b.onclick=()=>{fm.cwd=path;fm.file=null;fmRender();};
+  li.append(b);return li;
+ };
+ list.append(item("",0));
+ for(const f of folders)list.append(item(f,f.split("/").length));
+ return list;
+}
+function fmList(){
+ const folders=[...fmFolders()].filter(f=>fmParent(f)===fm.cwd).sort((a,b)=>a.localeCompare(b,"ru"));
+ const files=fm.items.filter(i=>!i.dir && fmParent(i.path)===fm.cwd).sort((a,b)=>a.path.localeCompare(b.path,"ru"));
+ const wrap=document.createElement("div");wrap.className="sx-ai-fm-list";
+ if(!folders.length && !files.length){
+  wrap.append(Object.assign(document.createElement("p"),{className:"sx-ai-note sx-ai-fm-empty",
+   textContent:canWrite?"Папка пуста. Перетащите сюда файлы или нажмите «Загрузить».":"Папка пуста."}));
+  return wrap;
+ }
+ const entries=[...folders.map(p=>{const i=fm.items.find(x=>x.path===p);return {path:p,dir:true,size:0,updated_at:i?.updated_at||0};}),...files];
+ for(const item of entries){
+  const row=document.createElement("div");row.className="sx-ai-fm-row";
+  const open=document.createElement("button");open.type="button";open.className="sx-ai-fm-open";
+  open.append(fmSvg(fmIcons[item.dir?"dir":fmKind(item.path)]),Object.assign(document.createElement("span"),{textContent:fmName(item.path)}));
+  open.onclick=()=>{if(item.dir){fm.cwd=item.path;fm.file=null;fmRender();}else fmOpen(item);};
+  const size=Object.assign(document.createElement("span"),{className:"sx-ai-fm-meta",textContent:item.dir?"":fmSize(item.size)});
+  const date=Object.assign(document.createElement("span"),{className:"sx-ai-fm-meta",textContent:fmDate(item.updated_at)});
+  const more=document.createElement("button");more.type="button";more.className="sx-ai-iconbtn sx-ai-fm-more";more.title="Действия";
+  more.setAttribute("aria-haspopup","menu");more.setAttribute("aria-expanded","false");more.append(fmSvg(fmIcons.more));
+  more.onclick=e=>{e.stopPropagation();if(menu?.owner===more){closeMenu();return;}fmRowMenu(item,row,open);};
+  row.append(open,size,date,more);wrap.append(row);
+ }
+ return wrap;
+}
+async function fmOpen(item){
+ fm.file=item;fmRender();
+ const view=fm.box.querySelector(".sx-ai-fm-main");
+ try{
+  const r=await fetch("/ai-panel/project-download?path="+encodeURIComponent(item.path));
+  if(!r.ok)throw Error("Не удалось открыть файл.");
+  const blob=await r.blob();
+  if(fm.file!==item)return;
+  const body=document.createElement("div");body.className="sx-ai-fm-preview";
+  const actions=document.createElement("div");actions.className="sx-ai-fm-actions";
+  actions.append(fmBtn("К папке","up",()=>{fm.file=null;fmRender();}),fmBtn("Скачать","",()=>{location.href="/ai-panel/project-download?path="+encodeURIComponent(item.path);}));
+  if(fmKind(item.path)==="image" && !/\.svg$/i.test(item.path)){
+   const img=document.createElement("img");img.alt=fmName(item.path);img.src=URL.createObjectURL(blob);body.append(img);
+  }else if(fmText(item.path)){
+   const text=await blob.text();
+   if(/\.html?$/i.test(item.path)){
+    // Rendered page without scripts or access to the admin: an isolated frame.
+    const frame=document.createElement("iframe");frame.setAttribute("sandbox","");frame.title=fmName(item.path);frame.srcdoc=text;
+    const code=Object.assign(document.createElement("pre"),{textContent:text});code.hidden=true;
+    actions.append(fmBtn("Код","code",e=>{const show=code.hidden;code.hidden=!show;frame.hidden=show;e.currentTarget.querySelector("span").textContent=show?"Страница":"Код";}));
+    body.append(frame,code);
+   }else body.append(Object.assign(document.createElement("pre"),{textContent:text}));
+   if(canWrite)actions.append(fmBtn("Редактировать","",()=>fmEdit(item,text)));
+  }else body.append(Object.assign(document.createElement("p"),{className:"sx-ai-note",textContent:"Просмотр этого типа файлов недоступен, его можно скачать."}));
+  const info=Object.assign(document.createElement("p"),{className:"sx-ai-note",textContent:fmSize(item.size)+" · изменён "+fmDate(item.updated_at)});
+  view.replaceChildren(actions,info,body);
+ }catch(e){fmStatus(e.message,true);}
+}
+function fmEdit(item,text){
+ const view=fm.box.querySelector(".sx-ai-fm-main");
+ const field=document.createElement("textarea");field.className="form-control sx-ai-fm-editor";field.value=text;field.spellcheck=false;field.setAttribute("aria-label",item.path);
+ const actions=document.createElement("div");actions.className="sx-ai-fm-actions";
+ actions.append(fmBtn("Сохранить","",async()=>{
+  try{fmStatus("Сохраняю…");await saveProjectFile({path:item.path,revision:item.revision,text:field.value},chatId);fmStatus("Сохранено.");
+   await fmLoad();const fresh=fm.items.find(i=>i.path===item.path);if(fresh)fmOpen(fresh);}
+  catch(e){fmStatus(e.message,true);}
+ },"sx-ai-fm-primary"),fmBtn("Отмена","",()=>fmOpen(item)));
+ view.replaceChildren(actions,field);field.focus();
+}
+function fmRender(){
+ const box=fm.box;
+ box.querySelector(".sx-ai-fm-crumbs").replaceWith(fmCrumbs());
+ box.querySelector(".sx-ai-fm-tree").replaceChildren(fmTree());
+ if(!fm.file)box.querySelector(".sx-ai-fm-main").replaceChildren(fmList());
+}
+function fmBuild(){
+ const box=document.createElement("section");box.className="sx-ai-fm";box.hidden=true;box.setAttribute("aria-label","Файлы проекта");
+ const head=document.createElement("header");head.className="sx-ai-fm-head";
+ const input=document.createElement("input");input.type="file";input.multiple=true;input.hidden=true;
+ input.onchange=()=>{if(input.files.length)fmUpload([...input.files]);input.value="";};
+ // The picker's cancel event must not reach the dialog (it would close the window).
+ input.addEventListener("cancel",e=>e.stopPropagation());
+ head.append(Object.assign(document.createElement("strong"),{textContent:"Файлы проекта"}),Object.assign(document.createElement("span"),{className:"sx-ai-fm-space"}));
+ if(canWrite){
+  const newFolder=fmBtn("Новая папка","plus",()=>{
+   const anchor=document.createElement("span");fm.box.querySelector(".sx-ai-fm-main").prepend(anchor);
+   fmAskName(anchor,"",v=>fmChange({op:"folder",path:fmJoin(fm.cwd,v)},"Папка создана."));
+  });
+  head.append(newFolder,fmBtn("Загрузить","up",()=>input.click()),input);
+ }
+ head.append(fmBtn("Закрыть","close",fmClose));
+ const body=document.createElement("div");body.className="sx-ai-fm-body";
+ body.append(Object.assign(document.createElement("nav"),{className:"sx-ai-fm-tree",ariaLabel:"Папки"}),Object.assign(document.createElement("div"),{className:"sx-ai-fm-main"}));
+ const drop=Object.assign(document.createElement("div"),{className:"sx-ai-fm-drop",textContent:"Отпустите, чтобы загрузить в папку"});
+ box.append(head,Object.assign(document.createElement("nav"),{className:"sx-ai-fm-crumbs"}),body,Object.assign(document.createElement("p"),{className:"sx-ai-fm-status",role:"status"}),drop);
+ let depth=0;
+ box.addEventListener("dragenter",e=>{if(!canWrite || !e.dataTransfer?.types.includes("Files"))return;e.preventDefault();e.stopPropagation();depth++;box.classList.add("is-dropping");});
+ box.addEventListener("dragover",e=>{if(!canWrite || !e.dataTransfer?.types.includes("Files"))return;e.preventDefault();e.stopPropagation();});
+ box.addEventListener("dragleave",e=>{e.stopPropagation();if(--depth<=0){depth=0;box.classList.remove("is-dropping");}});
+ box.addEventListener("drop",e=>{if(!e.dataTransfer?.files.length)return;e.preventDefault();e.stopPropagation();depth=0;box.classList.remove("is-dropping");fmUpload([...e.dataTransfer.files]);});
+ box.addEventListener("keydown",e=>{if(e.key==="Escape" && !menu){e.preventDefault();e.stopPropagation();fmClose();}});
+ panel.querySelector("main").append(box);
+ return box;
+}
+function fmShow(){
+ fm.box??=fmBuild();
+ fm.box.hidden=false;
+ requestAnimationFrame(()=>fm.box.classList.add("is-open"));
+ setTimeout(()=>fm.box.classList.add("is-open"),20);
+ folder.setAttribute("aria-expanded","true");
+ fmStatus("");fmRender();fmLoad();
+ fm.box.querySelector(".sx-ai-fm-head button")?.focus({preventScroll:true});
+}
+function fmClose(){
+ if(!fm.box || fm.box.hidden)return;
+ closeMenu();
+ fm.box.classList.remove("is-open");
+ folder.setAttribute("aria-expanded","false");
+ setTimeout(()=>{if(!fm.box.classList.contains("is-open"))fm.box.hidden=true;},260);
+ folder.focus({preventScroll:true});
+}
+folder.onclick=()=>{if(fm.box && !fm.box.hidden)fmClose();else fmShow();};
 let sidebarVersion=0,searchTimer,updatingSidebar=false,sidebarTimer;
 const closedGroups=new Set();
 let sidebarSignature="";
@@ -433,7 +613,7 @@ function render(data){
      item.append(" ",actionButton("Сохранить в проект",async()=>{
       const path=window.prompt("Путь в общей папке проекта",f.name);
       if(!path)return;
-      try{await saveProjectFile({path,attachment_id:Number(f.id)},data.chatId);folder.open=true;await refreshFolder();}
+      try{await saveProjectFile({path,attachment_id:Number(f.id)},data.chatId);fmShow();}
       catch(e){el("status").textContent=e.message;}
      }));
     }
@@ -740,4 +920,5 @@ conversation.addEventListener("dragleave",e=>{if(!dragsFiles(e))return;if(--drag
 conversation.addEventListener("drop",()=>setDragging(false));
 document.addEventListener("dragend",()=>setDragging(false));
 window.addEventListener("blur",()=>setDragging(false));
+fmLoad();
 })();
